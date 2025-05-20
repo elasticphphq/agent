@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/elasticphphq/agent/internal/config"
+	"github.com/elasticphphq/agent/internal/logging"
 	"github.com/elasticphphq/fcgx"
 	"os"
 	"path/filepath"
@@ -34,7 +35,12 @@ type Stats struct {
 }
 
 func GetOpcacheStatus(ctx context.Context, cfg config.FPMPoolConfig) (*OpcacheStatus, error) {
-	scriptContent := `<?php header("Content-Type: application/json"); echo json_encode(opcache_get_status());`
+	scriptContent := `<?php
+error_reporting(0);
+ini_set('display_errors', 0);
+header("Content-Type: application/json");
+echo json_encode(opcache_get_status());
+exit;`
 	tmpFile, err := os.CreateTemp("/tmp", "opcache-status-*.php")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp PHP script: %w", err)
@@ -74,6 +80,7 @@ func GetOpcacheStatus(ctx context.Context, cfg config.FPMPoolConfig) (*OpcacheSt
 
 	var status OpcacheStatus
 	if err := fcgx.ReadJSON(resp, &status); err != nil {
+		logging.L().Debug("Opcache json failed", "body")
 		return nil, fmt.Errorf("failed to parse opcache JSON: %w", err)
 	}
 
