@@ -2,6 +2,7 @@ package phpfpm
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/elasticphphq/agent/internal/config"
 	"github.com/elasticphphq/agent/internal/logging"
@@ -78,9 +79,15 @@ exit;`
 	}
 	defer resp.Body.Close()
 
+	body, err := fcgx.ReadBody(resp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read opcache response: %w", err)
+	}
+
+	logging.L().Debug("Raw opcache output", "body", string(body))
+
 	var status OpcacheStatus
-	if err := fcgx.ReadJSON(resp, &status); err != nil {
-		logging.L().Debug("Opcache json failed", "body")
+	if err := json.Unmarshal(body, &status); err != nil {
 		return nil, fmt.Errorf("failed to parse opcache JSON: %w", err)
 	}
 
