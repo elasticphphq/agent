@@ -10,7 +10,7 @@ type Config struct {
 	Logging LoggingBlock    `mapstructure:"logging"`
 	PHPFpm  FPMConfig       `mapstructure:"phpfpm"`
 	PHP     PHPConfig       `mapstructure:"php"`
-	Monitor MonitorBlock    `mapstructure:"monitor"`
+	Monitor MonitorConfig   `mapstructure:"monitor"`
 	Laravel []LaravelConfig `mapstructure:"laravel"`
 }
 
@@ -51,8 +51,9 @@ type LaravelConfig struct {
 	Queues    map[string][]string `mapstructure:"queues"`     // Map of connection name to list of queue names
 }
 
-type MonitorBlock struct {
+type MonitorConfig struct {
 	ListenAddr string `mapstructure:"listen_addr"`
+	EnableJson bool   `mapstructure:"enable_json"`
 }
 
 func Load() (*Config, error) {
@@ -67,6 +68,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("php.binary", "php")
 
 	viper.SetDefault("monitor.listen_addr", ":9114")
+	viper.SetDefault("monitor.enable_json", true)
 
 	viper.SetDefault("logging.level", "info")
 	viper.SetDefault("logging.format", "json")
