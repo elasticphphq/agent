@@ -186,6 +186,8 @@ func GetMetrics(ctx context.Context, cfg *config.Config) (map[string]*Result, er
 		opcacheStatus, err := GetOpcacheStatus(ctx, poolCfg)
 		if err == nil && opcacheStatus != nil {
 			pool.OpcacheStatus = *opcacheStatus
+		} else {
+			logging.L().Info("failed to get PHP info", "error", err)
 		}
 
 		result.Pools[pool.Name] = pool

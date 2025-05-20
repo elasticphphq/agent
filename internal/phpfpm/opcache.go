@@ -2,14 +2,11 @@ package phpfpm
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/elasticphphq/agent/internal/config"
 	"github.com/elasticphphq/fcgx"
-	"io"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 type OpcacheStatus struct {
@@ -75,18 +72,10 @@ func GetOpcacheStatus(ctx context.Context, cfg config.FPMPoolConfig) (*OpcacheSt
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read fcgi response: %w", err)
-	}
-
-	if !strings.HasPrefix(string(body), "{") {
-		return nil, fmt.Errorf("invalid JSON output: %s", body)
-	}
-
 	var status OpcacheStatus
-	if err := json.Unmarshal(body, &status); err != nil {
+	if err := fcgx.ReadJSON(resp, &status); err != nil {
 		return nil, fmt.Errorf("failed to parse opcache JSON: %w", err)
 	}
+
 	return &status, nil
 }

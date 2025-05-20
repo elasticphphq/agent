@@ -34,6 +34,21 @@ type PrometheusCollector struct {
 	memoryPeakDesc          *prometheus.Desc
 	processCurrentRssDesc   *prometheus.Desc
 
+	// Opcache metrics
+	opcacheEnabledDesc         *prometheus.Desc
+	opcacheUsedMemoryDesc      *prometheus.Desc
+	opcacheFreeMemoryDesc      *prometheus.Desc
+	opcacheWastedMemoryDesc    *prometheus.Desc
+	opcacheWastedPercentDesc   *prometheus.Desc
+	opcacheCachedScriptsDesc   *prometheus.Desc
+	opcacheHitsDesc            *prometheus.Desc
+	opcacheMissesDesc          *prometheus.Desc
+	opcacheBlacklistMissesDesc *prometheus.Desc
+	opcacheOomRestartsDesc     *prometheus.Desc
+	opcacheHashRestartsDesc    *prometheus.Desc
+	opcacheManualRestartsDesc  *prometheus.Desc
+	opcacheHitRateDesc         *prometheus.Desc
+
 	// Pool config metrics
 	// Maximum child processes, limits concurrency and memory use
 	pmMaxChildrenConfigDesc *prometheus.Desc
@@ -89,6 +104,21 @@ func NewPrometheusCollector(cfg *config.Config) *PrometheusCollector {
 		memoryPeakDesc:          prometheus.NewDesc("phpfpm_memory_peak", "Peak memory usage of the pool.", labels, nil),
 		processCurrentRssDesc:   prometheus.NewDesc("phpfpm_process_current_rss", "Resident set size (RSS) of the current process.", []string{"pool", "socket", "pid"}, nil),
 
+		// Opcache metrics
+		opcacheEnabledDesc:         prometheus.NewDesc("phpfpm_opcache_enabled", "Whether opcache is enabled.", labels, nil),
+		opcacheUsedMemoryDesc:      prometheus.NewDesc("phpfpm_opcache_used_memory_bytes", "Amount of used opcache memory in bytes.", labels, nil),
+		opcacheFreeMemoryDesc:      prometheus.NewDesc("phpfpm_opcache_free_memory_bytes", "Amount of free opcache memory in bytes.", labels, nil),
+		opcacheWastedMemoryDesc:    prometheus.NewDesc("phpfpm_opcache_wasted_memory_bytes", "Amount of wasted opcache memory in bytes.", labels, nil),
+		opcacheWastedPercentDesc:   prometheus.NewDesc("phpfpm_opcache_wasted_memory_percent", "Percentage of wasted opcache memory.", labels, nil),
+		opcacheCachedScriptsDesc:   prometheus.NewDesc("phpfpm_opcache_cached_scripts", "Number of cached scripts in opcache.", labels, nil),
+		opcacheHitsDesc:            prometheus.NewDesc("phpfpm_opcache_hits_total", "Total number of opcache hits.", labels, nil),
+		opcacheMissesDesc:          prometheus.NewDesc("phpfpm_opcache_misses_total", "Total number of opcache misses.", labels, nil),
+		opcacheBlacklistMissesDesc: prometheus.NewDesc("phpfpm_opcache_blacklist_misses_total", "Number of blacklist misses in opcache.", labels, nil),
+		opcacheOomRestartsDesc:     prometheus.NewDesc("phpfpm_opcache_oom_restarts_total", "Number of out-of-memory restarts in opcache.", labels, nil),
+		opcacheHashRestartsDesc:    prometheus.NewDesc("phpfpm_opcache_hash_restarts_total", "Number of hash restarts in opcache.", labels, nil),
+		opcacheManualRestartsDesc:  prometheus.NewDesc("phpfpm_opcache_manual_restarts_total", "Number of manual restarts in opcache.", labels, nil),
+		opcacheHitRateDesc:         prometheus.NewDesc("phpfpm_opcache_hit_rate", "Opcache hit rate.", labels, nil),
+
 		// Pool config metrics
 		pmMaxChildrenConfigDesc:           prometheus.NewDesc("phpfpm_pm_max_children_config", "PHP-FPM pool config: max children. Maximum child processes, limits concurrency and memory use.", labels, nil),
 		pmStartServersConfigDesc:          prometheus.NewDesc("phpfpm_pm_start_servers_config", "PHP-FPM pool config: start servers. Number of processes created on startup, affects cold start latency.", labels, nil),
@@ -130,6 +160,21 @@ func (pc *PrometheusCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- pc.processesMemoryRssDesc
 	ch <- pc.memoryPeakDesc
 	ch <- pc.processCurrentRssDesc
+
+	// Opcache metrics
+	ch <- pc.opcacheEnabledDesc
+	ch <- pc.opcacheUsedMemoryDesc
+	ch <- pc.opcacheFreeMemoryDesc
+	ch <- pc.opcacheWastedMemoryDesc
+	ch <- pc.opcacheWastedPercentDesc
+	ch <- pc.opcacheCachedScriptsDesc
+	ch <- pc.opcacheHitsDesc
+	ch <- pc.opcacheMissesDesc
+	ch <- pc.opcacheBlacklistMissesDesc
+	ch <- pc.opcacheOomRestartsDesc
+	ch <- pc.opcacheHashRestartsDesc
+	ch <- pc.opcacheManualRestartsDesc
+	ch <- pc.opcacheHitRateDesc
 
 	// FPM Config
 	ch <- pc.pmMaxChildrenConfigDesc
@@ -332,6 +377,21 @@ func (pc *PrometheusCollector) Collect(ch chan<- prometheus.Metric) {
 				// New: current RSS per process
 				ch <- prometheus.MustNewConstMetric(pc.processCurrentRssDesc, prometheus.GaugeValue, float64(proc.CurrentRSS), poolName, socket, strconv.Itoa(proc.PID))
 			}
+
+			// Opcache metrics
+			ch <- prometheus.MustNewConstMetric(pc.opcacheEnabledDesc, prometheus.GaugeValue, boolToFloat(pool.OpcacheStatus.Enabled), poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.opcacheUsedMemoryDesc, prometheus.GaugeValue, float64(pool.OpcacheStatus.MemoryUsage.UsedMemory), poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.opcacheFreeMemoryDesc, prometheus.GaugeValue, float64(pool.OpcacheStatus.MemoryUsage.FreeMemory), poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.opcacheWastedMemoryDesc, prometheus.GaugeValue, float64(pool.OpcacheStatus.MemoryUsage.WastedMemory), poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.opcacheWastedPercentDesc, prometheus.GaugeValue, pool.OpcacheStatus.MemoryUsage.CurrentWastedPct, poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.opcacheCachedScriptsDesc, prometheus.GaugeValue, float64(pool.OpcacheStatus.Statistics.NumCachedScripts), poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.opcacheHitsDesc, prometheus.CounterValue, float64(pool.OpcacheStatus.Statistics.Hits), poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.opcacheMissesDesc, prometheus.CounterValue, float64(pool.OpcacheStatus.Statistics.Misses), poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.opcacheBlacklistMissesDesc, prometheus.CounterValue, float64(pool.OpcacheStatus.Statistics.BlacklistMisses), poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.opcacheOomRestartsDesc, prometheus.CounterValue, float64(pool.OpcacheStatus.Statistics.OomRestarts), poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.opcacheHashRestartsDesc, prometheus.CounterValue, float64(pool.OpcacheStatus.Statistics.HashRestarts), poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.opcacheManualRestartsDesc, prometheus.CounterValue, float64(pool.OpcacheStatus.Statistics.ManualRestarts), poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.opcacheHitRateDesc, prometheus.GaugeValue, pool.OpcacheStatus.Statistics.HitRate, poolName, socket)
 
 			// Pool config metrics
 			cfg := pool.Config
