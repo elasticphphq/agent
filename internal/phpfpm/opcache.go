@@ -39,6 +39,7 @@ func GetOpcacheStatus(ctx context.Context, cfg config.FPMPoolConfig) (*OpcacheSt
 	scriptContent := `<?php
 error_reporting(0);
 ini_set('display_errors', 0);
+header("Status: 200 OK");
 header("Content-Type: application/json");
 echo json_encode(opcache_get_status());
 exit;`
