@@ -1,0 +1,333 @@
+package serve
+
+import (
+	"context"
+	"github.com/elasticphphq/agent/internal/config"
+	"github.com/elasticphphq/agent/internal/metrics"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"log"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+)
+
+type PrometheusCollector struct {
+	cfg *config.Config
+
+	// Existing metric descriptors...
+	upDesc                  *prometheus.Desc
+	acceptedConnectionsDesc *prometheus.Desc
+	startSinceDesc          *prometheus.Desc
+	listenQueueDesc         *prometheus.Desc
+	maxListenQueueDesc      *prometheus.Desc
+	listenQueueLengthDesc   *prometheus.Desc
+	idleProcessesDesc       *prometheus.Desc
+	activeProcessesDesc     *prometheus.Desc
+	totalProcessesDesc      *prometheus.Desc
+	maxActiveProcessesDesc  *prometheus.Desc
+	maxChildrenReachedDesc  *prometheus.Desc
+	slowRequestsDesc        *prometheus.Desc
+
+	// Pool config metrics
+	// Maximum child processes, limits concurrency and memory use
+	pmMaxChildrenConfigDesc *prometheus.Desc
+	// Number of processes created on startup, affects cold start latency
+	pmStartServersConfigDesc *prometheus.Desc
+	// Minimum idle processes, for load spikes
+	pmMinSpareServersConfigDesc *prometheus.Desc
+	// Maximum idle processes, prevents resource waste
+	pmMaxSpareServersConfigDesc *prometheus.Desc
+	// Max requests per process before respawn, mitigates memory leaks
+	pmMaxRequestsConfigDesc *prometheus.Desc
+	// Max processes spawned per second, prevents fork bomb
+	pmMaxSpawnRateConfigDesc *prometheus.Desc
+	// Idle timeout for workers, helps tune recycling
+	pmProcessIdleTimeoutConfigDesc *prometheus.Desc
+	// Timeout for slowlog, helps find slow requests
+	requestSlowlogTimeoutConfigDesc *prometheus.Desc
+	// Max execution time for request
+	requestTerminateTimeoutConfigDesc *prometheus.Desc
+	// Core dump size limit
+	rlimitCoreConfigDesc *prometheus.Desc
+	// File descriptors limit per process
+	rlimitFilesConfigDesc *prometheus.Desc
+
+	// New system metrics
+	systemInfoDesc    *prometheus.Desc
+	cpuLimitDesc      *prometheus.Desc
+	memoryLimitMBDesc *prometheus.Desc
+
+	laravelInfoDesc *prometheus.Desc
+}
+
+func NewPrometheusCollector(cfg *config.Config) *PrometheusCollector {
+	labels := []string{"pool", "socket"}
+	return &PrometheusCollector{
+		cfg:                     cfg,
+		upDesc:                  prometheus.NewDesc("phpfpm_up", "Shows whether scraping PHP-FPM's status was successful (1 for yes, 0 for no).", labels, nil),
+		acceptedConnectionsDesc: prometheus.NewDesc("phpfpm_accepted_connections", "The number of accepted connections to the pool.", labels, nil),
+		startSinceDesc:          prometheus.NewDesc("phpfpm_start_since", "Number of seconds since FPM has started.", labels, nil),
+		listenQueueDesc:         prometheus.NewDesc("phpfpm_listen_queue", "The number of requests in the queue of pending connections.", labels, nil),
+		maxListenQueueDesc:      prometheus.NewDesc("phpfpm_max_listen_queue", "The maximum number of requests in the queue of pending connections since FPM has started.", labels, nil),
+		listenQueueLengthDesc:   prometheus.NewDesc("phpfpm_listen_queue_length", "The size of the socket queue of pending connections.", labels, nil),
+		idleProcessesDesc:       prometheus.NewDesc("phpfpm_idle_processes", "The number of idle PHP-FPM processes.", labels, nil),
+		activeProcessesDesc:     prometheus.NewDesc("phpfpm_active_processes", "The number of active PHP-FPM processes.", labels, nil),
+		totalProcessesDesc:      prometheus.NewDesc("phpfpm_total_processes", "The number of total PHP-FPM processes.", labels, nil),
+		maxActiveProcessesDesc:  prometheus.NewDesc("phpfpm_max_active_processes", "The maximum number of active PHP-FPM processes since FPM has started.", labels, nil),
+		maxChildrenReachedDesc:  prometheus.NewDesc("phpfpm_max_children_reached", "Number of times the process limit has been reached, when pm.max_children is reached.", labels, nil),
+		slowRequestsDesc:        prometheus.NewDesc("phpfpm_slow_requests", "The number of requests that exceeded request_slowlog_timeout.", labels, nil),
+
+		// Pool config metrics
+		pmMaxChildrenConfigDesc:           prometheus.NewDesc("phpfpm_pm_max_children_config", "PHP-FPM pool config: max children. Maximum child processes, limits concurrency and memory use.", labels, nil),
+		pmStartServersConfigDesc:          prometheus.NewDesc("phpfpm_pm_start_servers_config", "PHP-FPM pool config: start servers. Number of processes created on startup, affects cold start latency.", labels, nil),
+		pmMinSpareServersConfigDesc:       prometheus.NewDesc("phpfpm_pm_min_spare_servers_config", "PHP-FPM pool config: min spare servers. Minimum idle processes for load spikes.", labels, nil),
+		pmMaxSpareServersConfigDesc:       prometheus.NewDesc("phpfpm_pm_max_spare_servers_config", "PHP-FPM pool config: max spare servers. Maximum idle processes, prevents resource waste.", labels, nil),
+		pmMaxRequestsConfigDesc:           prometheus.NewDesc("phpfpm_pm_max_requests_config", "PHP-FPM pool config: max requests. Max requests per process before respawn, mitigates memory leaks.", labels, nil),
+		pmMaxSpawnRateConfigDesc:          prometheus.NewDesc("phpfpm_pm_max_spawn_rate_config", "PHP-FPM pool config: max spawn rate. Max processes spawned per second, prevents fork bomb scenarios.", labels, nil),
+		pmProcessIdleTimeoutConfigDesc:    prometheus.NewDesc("phpfpm_pm_process_idle_timeout_config", "PHP-FPM pool config: process idle timeout in seconds, helps tune process recycling.", labels, nil),
+		requestSlowlogTimeoutConfigDesc:   prometheus.NewDesc("phpfpm_request_slowlog_timeout_config", "PHP-FPM pool config: slowlog timeout in seconds, helps identify slow requests.", labels, nil),
+		requestTerminateTimeoutConfigDesc: prometheus.NewDesc("phpfpm_request_terminate_timeout_config", "PHP-FPM pool config: terminate timeout in seconds, max execution time for a single request.", labels, nil),
+		rlimitCoreConfigDesc:              prometheus.NewDesc("phpfpm_rlimit_core_config", "PHP-FPM pool config: core dump size limit for processes.", labels, nil),
+		rlimitFilesConfigDesc:             prometheus.NewDesc("phpfpm_rlimit_files_config", "PHP-FPM pool config: file descriptors limit per process.", labels, nil),
+
+		// New system metrics
+		systemInfoDesc:    prometheus.NewDesc("system_info", "System information", []string{"type", "os", "arch"}, nil),
+		cpuLimitDesc:      prometheus.NewDesc("system_cpu_limit", "Logical CPU limit", nil, nil),
+		memoryLimitMBDesc: prometheus.NewDesc("system_memory_limit_mb", "Memory limit in MB", nil, nil),
+
+		laravelInfoDesc: prometheus.NewDesc("laravel_app_info", "Basic information about Laravel site", []string{"site", "version", "php_version", "env", "debug_mode"}, nil),
+	}
+}
+
+func (pc *PrometheusCollector) Describe(ch chan<- *prometheus.Desc) {
+	// Existing
+	ch <- pc.upDesc
+	ch <- pc.acceptedConnectionsDesc
+	ch <- pc.startSinceDesc
+	ch <- pc.listenQueueDesc
+	ch <- pc.maxListenQueueDesc
+	ch <- pc.listenQueueLengthDesc
+	ch <- pc.idleProcessesDesc
+	ch <- pc.activeProcessesDesc
+	ch <- pc.totalProcessesDesc
+	ch <- pc.maxActiveProcessesDesc
+	ch <- pc.maxChildrenReachedDesc
+	ch <- pc.slowRequestsDesc
+
+	// FPM Config
+	ch <- pc.pmMaxChildrenConfigDesc
+	ch <- pc.pmStartServersConfigDesc
+	ch <- pc.pmMinSpareServersConfigDesc
+	ch <- pc.pmMaxSpareServersConfigDesc
+	ch <- pc.pmMaxRequestsConfigDesc
+	ch <- pc.pmMaxSpawnRateConfigDesc
+	ch <- pc.pmProcessIdleTimeoutConfigDesc
+	ch <- pc.requestSlowlogTimeoutConfigDesc
+	ch <- pc.requestTerminateTimeoutConfigDesc
+	ch <- pc.rlimitCoreConfigDesc
+	ch <- pc.rlimitFilesConfigDesc
+
+	// New system metrics
+	ch <- pc.systemInfoDesc
+	ch <- pc.cpuLimitDesc
+	ch <- pc.memoryLimitMBDesc
+
+	ch <- pc.laravelInfoDesc
+}
+
+func parseConfigValue(val string) (float64, bool) {
+	val = strings.TrimSpace(val)
+	if strings.HasSuffix(val, "s") {
+		val = strings.TrimSuffix(val, "s")
+	}
+	f, err := strconv.ParseFloat(val, 64)
+	if err != nil {
+		return 0, false
+	}
+	return f, true
+}
+
+func (pc *PrometheusCollector) Collect(ch chan<- prometheus.Metric) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	m, err := metrics.GetMetrics(ctx, pc.cfg)
+	if err != nil {
+		ch <- prometheus.MustNewConstMetric(pc.upDesc, prometheus.GaugeValue, 0, "unknown", "unknown")
+		return
+	}
+
+	if m.Server != nil {
+		nodeType := string(m.Server.NodeType)
+		ch <- prometheus.MustNewConstMetric(pc.systemInfoDesc, prometheus.GaugeValue, 1, nodeType, m.Server.OS, m.Server.Architecture)
+		ch <- prometheus.MustNewConstMetric(pc.cpuLimitDesc, prometheus.GaugeValue, float64(m.Server.CPULimit))
+		ch <- prometheus.MustNewConstMetric(pc.memoryLimitMBDesc, prometheus.GaugeValue, float64(m.Server.MemoryLimitMB))
+	}
+
+	for site, lm := range m.Laravel {
+		if lm == nil {
+			continue
+		}
+		info := lm
+		debugMode := "false"
+		if info.Info.Environment.DebugMode {
+			debugMode = "true"
+		}
+		ch <- prometheus.MustNewConstMetric(pc.laravelInfoDesc, prometheus.GaugeValue, 1,
+			site,
+			info.Info.Environment.LaravelVersion,
+			info.Info.Environment.PHPVersion,
+			info.Info.Environment.Environment,
+			debugMode,
+		)
+
+		// Export Laravel cache status metrics
+		ch <- prometheus.MustNewConstMetric(
+			prometheus.NewDesc("laravel_cache_config", "Is config cache enabled", []string{"site"}, nil),
+			prometheus.GaugeValue, boolToFloat(info.Info.Cache.Config), site)
+		ch <- prometheus.MustNewConstMetric(
+			prometheus.NewDesc("laravel_cache_events", "Is events cache enabled", []string{"site"}, nil),
+			prometheus.GaugeValue, boolToFloat(info.Info.Cache.Events), site)
+		ch <- prometheus.MustNewConstMetric(
+			prometheus.NewDesc("laravel_cache_routes", "Is routes cache enabled", []string{"site"}, nil),
+			prometheus.GaugeValue, boolToFloat(info.Info.Cache.Routes), site)
+		ch <- prometheus.MustNewConstMetric(
+			prometheus.NewDesc("laravel_cache_views", "Is views cache enabled", []string{"site"}, nil),
+			prometheus.GaugeValue, boolToFloat(info.Info.Cache.Views), site)
+
+		// Export Laravel environment metadata metrics
+		ch <- prometheus.MustNewConstMetric(
+			prometheus.NewDesc("laravel_maintenance_mode", "Whether Laravel is in maintenance mode", []string{"site"}, nil),
+			prometheus.GaugeValue, boolToFloat(info.Info.Environment.MaintenanceMode), site)
+		ch <- prometheus.MustNewConstMetric(
+			prometheus.NewDesc("laravel_debug_mode", "Whether Laravel debug mode is enabled", []string{"site"}, nil),
+			prometheus.GaugeValue, boolToFloat(info.Info.Environment.DebugMode), site)
+
+		// Export Laravel drivers metrics
+		drivers := info.Info.Drivers
+		ch <- prometheus.MustNewConstMetric(
+			prometheus.NewDesc("laravel_driver_info", "Configured Laravel driver", []string{"site", "type", "value"}, nil),
+			prometheus.GaugeValue, 1, site, "broadcasting", drivers.Broadcasting)
+		ch <- prometheus.MustNewConstMetric(
+			prometheus.NewDesc("laravel_driver_info", "Configured Laravel driver", []string{"site", "type", "value"}, nil),
+			prometheus.GaugeValue, 1, site, "cache", drivers.Cache)
+		ch <- prometheus.MustNewConstMetric(
+			prometheus.NewDesc("laravel_driver_info", "Configured Laravel driver", []string{"site", "type", "value"}, nil),
+			prometheus.GaugeValue, 1, site, "database", drivers.Database)
+		for _, log := range drivers.Logs {
+			ch <- prometheus.MustNewConstMetric(
+				prometheus.NewDesc("laravel_driver_info", "Configured Laravel driver", []string{"site", "type", "value"}, nil),
+				prometheus.GaugeValue, 1, site, "logs", log)
+		}
+		ch <- prometheus.MustNewConstMetric(
+			prometheus.NewDesc("laravel_driver_info", "Configured Laravel driver", []string{"site", "type", "value"}, nil),
+			prometheus.GaugeValue, 1, site, "mail", drivers.Mail)
+		ch <- prometheus.MustNewConstMetric(
+			prometheus.NewDesc("laravel_driver_info", "Configured Laravel driver", []string{"site", "type", "value"}, nil),
+			prometheus.GaugeValue, 1, site, "queue", drivers.Queue)
+		ch <- prometheus.MustNewConstMetric(
+			prometheus.NewDesc("laravel_driver_info", "Configured Laravel driver", []string{"site", "type", "value"}, nil),
+			prometheus.GaugeValue, 1, site, "session", drivers.Session)
+
+		// Export Laravel queue sizes
+		for conn, queues := range info.Queues {
+			for queue, qdata := range queues {
+				ch <- prometheus.MustNewConstMetric(
+					prometheus.NewDesc("laravel_queue_size", "Number of jobs in queue", []string{"site", "connection", "queue"}, nil),
+					prometheus.GaugeValue, float64(qdata.Size), site, conn, queue)
+			}
+		}
+	}
+
+	if m.Fpm == nil {
+		ch <- prometheus.MustNewConstMetric(pc.upDesc, prometheus.GaugeValue, 0, "unknown", "unknown")
+		return
+	}
+	if len(m.Fpm) == 0 {
+		ch <- prometheus.MustNewConstMetric(pc.upDesc, prometheus.GaugeValue, 0, "none", "none")
+		return
+	}
+	for socket, pools := range m.Fpm {
+		if socket == "" {
+			socket = "unknown"
+		}
+
+		for poolName, pool := range pools.Pools {
+			up := 1.0
+
+			ch <- prometheus.MustNewConstMetric(pc.upDesc, prometheus.GaugeValue, up, poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.acceptedConnectionsDesc, prometheus.CounterValue, float64(pool.AcceptedConnections), poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.startSinceDesc, prometheus.GaugeValue, float64(pool.StartSince), poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.listenQueueDesc, prometheus.GaugeValue, float64(pool.ListenQueue), poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.maxListenQueueDesc, prometheus.GaugeValue, float64(pool.MaxListenQueue), poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.listenQueueLengthDesc, prometheus.GaugeValue, float64(pool.ListenQueueLength), poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.idleProcessesDesc, prometheus.GaugeValue, float64(pool.IdleProcesses), poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.activeProcessesDesc, prometheus.GaugeValue, float64(pool.ActiveProcesses), poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.totalProcessesDesc, prometheus.GaugeValue, float64(pool.TotalProcesses), poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.maxActiveProcessesDesc, prometheus.GaugeValue, float64(pool.MaxActiveProcesses), poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.maxChildrenReachedDesc, prometheus.CounterValue, float64(pool.MaxChildrenReached), poolName, socket)
+			ch <- prometheus.MustNewConstMetric(pc.slowRequestsDesc, prometheus.CounterValue, float64(pool.SlowRequests), poolName, socket)
+
+			// Pool config metrics
+			cfg := pool.Config
+
+			if v, ok := parseConfigValue(cfg["pm.max_children"]); ok {
+				ch <- prometheus.MustNewConstMetric(pc.pmMaxChildrenConfigDesc, prometheus.GaugeValue, v, poolName, socket)
+			}
+			if v, ok := parseConfigValue(cfg["pm.start_servers"]); ok {
+				ch <- prometheus.MustNewConstMetric(pc.pmStartServersConfigDesc, prometheus.GaugeValue, v, poolName, socket)
+			}
+			if v, ok := parseConfigValue(cfg["pm.min_spare_servers"]); ok {
+				ch <- prometheus.MustNewConstMetric(pc.pmMinSpareServersConfigDesc, prometheus.GaugeValue, v, poolName, socket)
+			}
+			if v, ok := parseConfigValue(cfg["pm.max_spare_servers"]); ok {
+				ch <- prometheus.MustNewConstMetric(pc.pmMaxSpareServersConfigDesc, prometheus.GaugeValue, v, poolName, socket)
+			}
+			if v, ok := parseConfigValue(cfg["pm.max_requests"]); ok {
+				ch <- prometheus.MustNewConstMetric(pc.pmMaxRequestsConfigDesc, prometheus.GaugeValue, v, poolName, socket)
+			}
+			if v, ok := parseConfigValue(cfg["pm.max_spawn_rate"]); ok {
+				ch <- prometheus.MustNewConstMetric(pc.pmMaxSpawnRateConfigDesc, prometheus.GaugeValue, v, poolName, socket)
+			}
+			if v, ok := parseConfigValue(cfg["pm.process_idle_timeout"]); ok {
+				ch <- prometheus.MustNewConstMetric(pc.pmProcessIdleTimeoutConfigDesc, prometheus.GaugeValue, v, poolName, socket)
+			}
+			if v, ok := parseConfigValue(cfg["request_slowlog_timeout"]); ok {
+				ch <- prometheus.MustNewConstMetric(pc.requestSlowlogTimeoutConfigDesc, prometheus.GaugeValue, v, poolName, socket)
+			}
+			if v, ok := parseConfigValue(cfg["request_terminate_timeout"]); ok {
+				ch <- prometheus.MustNewConstMetric(pc.requestTerminateTimeoutConfigDesc, prometheus.GaugeValue, v, poolName, socket)
+			}
+			if v, ok := parseConfigValue(cfg["rlimit_core"]); ok {
+				ch <- prometheus.MustNewConstMetric(pc.rlimitCoreConfigDesc, prometheus.GaugeValue, v, poolName, socket)
+			}
+			if v, ok := parseConfigValue(cfg["rlimit_files"]); ok {
+				ch <- prometheus.MustNewConstMetric(pc.rlimitFilesConfigDesc, prometheus.GaugeValue, v, poolName, socket)
+			}
+		}
+	}
+}
+
+func boolToFloat(b bool) float64 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+func StartPrometheusServer(cfg *config.Config) {
+	registry := prometheus.NewRegistry()
+	collector := NewPrometheusCollector(cfg)
+	registry.MustRegister(collector)
+
+	http.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
+	//  TODO: raw json metrics
+	//http.HandleFunc("/json", func(w http.ResponseWriter, r *http.Request) {})
+
+	log.Printf("Prometheus metrics server listening on %s", cfg.Monitor.ListenAddr)
+	if err := http.ListenAndServe(cfg.Monitor.ListenAddr, nil); err != nil {
+		log.Fatalf("Failed to start Prometheus server: %v", err)
+	}
+}
