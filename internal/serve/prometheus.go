@@ -2,6 +2,7 @@ package serve
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/elasticphphq/agent/internal/config"
 	"github.com/elasticphphq/agent/internal/metrics"
 	"github.com/prometheus/client_golang/prometheus"
@@ -323,8 +324,25 @@ func StartPrometheusServer(cfg *config.Config) {
 	registry.MustRegister(collector)
 
 	http.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
-	//  TODO: raw json metrics
-	//http.HandleFunc("/json", func(w http.ResponseWriter, r *http.Request) {})
+
+	if cfg.Monitor.EnableJson == true {
+		http.HandleFunc("/json", func(w http.ResponseWriter, r *http.Request) {
+			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			defer cancel()
+
+			m, err := metrics.GetMetrics(ctx, cfg)
+			if err != nil {
+				http.Error(w, "failed to get metrics: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(m); err != nil {
+				http.Error(w, "failed to encode metrics: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+		})
+	}
 
 	log.Printf("Prometheus metrics server listening on %s", cfg.Monitor.ListenAddr)
 	if err := http.ListenAndServe(cfg.Monitor.ListenAddr, nil); err != nil {
