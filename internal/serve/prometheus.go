@@ -15,9 +15,7 @@ import (
 )
 
 type PrometheusCollector struct {
-	cfg *config.Config
-
-	// Existing metric descriptors...
+	cfg                     *config.Config
 	upDesc                  *prometheus.Desc
 	acceptedConnectionsDesc *prometheus.Desc
 	startSinceDesc          *prometheus.Desc
@@ -30,6 +28,11 @@ type PrometheusCollector struct {
 	maxActiveProcessesDesc  *prometheus.Desc
 	maxChildrenReachedDesc  *prometheus.Desc
 	slowRequestsDesc        *prometheus.Desc
+	processesCpuDesc        *prometheus.Desc
+	processesMemoryDesc     *prometheus.Desc
+	processesMemoryRssDesc  *prometheus.Desc
+	memoryPeakDesc          *prometheus.Desc
+	processCurrentRssDesc   *prometheus.Desc
 
 	// Pool config metrics
 	// Maximum child processes, limits concurrency and memory use
@@ -55,7 +58,7 @@ type PrometheusCollector struct {
 	// File descriptors limit per process
 	rlimitFilesConfigDesc *prometheus.Desc
 
-	// New system metrics
+	// System metrics
 	systemInfoDesc    *prometheus.Desc
 	cpuLimitDesc      *prometheus.Desc
 	memoryLimitMBDesc *prometheus.Desc
@@ -66,7 +69,8 @@ type PrometheusCollector struct {
 func NewPrometheusCollector(cfg *config.Config) *PrometheusCollector {
 	labels := []string{"pool", "socket"}
 	return &PrometheusCollector{
-		cfg:                     cfg,
+		cfg: cfg,
+		// FPM Metrics
 		upDesc:                  prometheus.NewDesc("phpfpm_up", "Shows whether scraping PHP-FPM's status was successful (1 for yes, 0 for no).", labels, nil),
 		acceptedConnectionsDesc: prometheus.NewDesc("phpfpm_accepted_connections", "The number of accepted connections to the pool.", labels, nil),
 		startSinceDesc:          prometheus.NewDesc("phpfpm_start_since", "Number of seconds since FPM has started.", labels, nil),
@@ -79,6 +83,11 @@ func NewPrometheusCollector(cfg *config.Config) *PrometheusCollector {
 		maxActiveProcessesDesc:  prometheus.NewDesc("phpfpm_max_active_processes", "The maximum number of active PHP-FPM processes since FPM has started.", labels, nil),
 		maxChildrenReachedDesc:  prometheus.NewDesc("phpfpm_max_children_reached", "Number of times the process limit has been reached, when pm.max_children is reached.", labels, nil),
 		slowRequestsDesc:        prometheus.NewDesc("phpfpm_slow_requests", "The number of requests that exceeded request_slowlog_timeout.", labels, nil),
+		processesCpuDesc:        prometheus.NewDesc("phpfpm_processes_cpu_avg", "Average CPU usage across all processes in the pool.", labels, nil),
+		processesMemoryDesc:     prometheus.NewDesc("phpfpm_processes_memory_avg", "Average memory usage across all processes in the pool.", labels, nil),
+		processesMemoryRssDesc:  prometheus.NewDesc("phpfpm_processes_memory_rss_avg", "Average resident set size (RSS) across all processes in the pool.", labels, nil),
+		memoryPeakDesc:          prometheus.NewDesc("phpfpm_memory_peak", "Peak memory usage of the pool.", labels, nil),
+		processCurrentRssDesc:   prometheus.NewDesc("phpfpm_process_current_rss", "Resident set size (RSS) of the current process.", []string{"pool", "socket", "pid"}, nil),
 
 		// Pool config metrics
 		pmMaxChildrenConfigDesc:           prometheus.NewDesc("phpfpm_pm_max_children_config", "PHP-FPM pool config: max children. Maximum child processes, limits concurrency and memory use.", labels, nil),
@@ -93,7 +102,7 @@ func NewPrometheusCollector(cfg *config.Config) *PrometheusCollector {
 		rlimitCoreConfigDesc:              prometheus.NewDesc("phpfpm_rlimit_core_config", "PHP-FPM pool config: core dump size limit for processes.", labels, nil),
 		rlimitFilesConfigDesc:             prometheus.NewDesc("phpfpm_rlimit_files_config", "PHP-FPM pool config: file descriptors limit per process.", labels, nil),
 
-		// New system metrics
+		// System metrics
 		systemInfoDesc:    prometheus.NewDesc("system_info", "System information", []string{"type", "os", "arch"}, nil),
 		cpuLimitDesc:      prometheus.NewDesc("system_cpu_limit", "Logical CPU limit", nil, nil),
 		memoryLimitMBDesc: prometheus.NewDesc("system_memory_limit_mb", "Memory limit in MB", nil, nil),
@@ -103,7 +112,7 @@ func NewPrometheusCollector(cfg *config.Config) *PrometheusCollector {
 }
 
 func (pc *PrometheusCollector) Describe(ch chan<- *prometheus.Desc) {
-	// Existing
+	// FPM Metrics
 	ch <- pc.upDesc
 	ch <- pc.acceptedConnectionsDesc
 	ch <- pc.startSinceDesc
@@ -116,6 +125,11 @@ func (pc *PrometheusCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- pc.maxActiveProcessesDesc
 	ch <- pc.maxChildrenReachedDesc
 	ch <- pc.slowRequestsDesc
+	ch <- pc.processesCpuDesc
+	ch <- pc.processesMemoryDesc
+	ch <- pc.processesMemoryRssDesc
+	ch <- pc.memoryPeakDesc
+	ch <- pc.processCurrentRssDesc
 
 	// FPM Config
 	ch <- pc.pmMaxChildrenConfigDesc
@@ -130,7 +144,7 @@ func (pc *PrometheusCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- pc.rlimitCoreConfigDesc
 	ch <- pc.rlimitFilesConfigDesc
 
-	// New system metrics
+	// System metrics
 	ch <- pc.systemInfoDesc
 	ch <- pc.cpuLimitDesc
 	ch <- pc.memoryLimitMBDesc
@@ -157,6 +171,9 @@ func (pc *PrometheusCollector) Collect(ch chan<- prometheus.Metric) {
 	m, err := metrics.GetMetrics(ctx, pc.cfg)
 	if err != nil {
 		ch <- prometheus.MustNewConstMetric(pc.upDesc, prometheus.GaugeValue, 0, "unknown", "unknown")
+		ch <- prometheus.MustNewConstMetric(
+			prometheus.NewDesc("phpfpm_scrape_failures", "The number of failures scraping from PHP-FPM.", nil, nil),
+			prometheus.CounterValue, 1)
 		return
 	}
 
@@ -270,6 +287,51 @@ func (pc *PrometheusCollector) Collect(ch chan<- prometheus.Metric) {
 			ch <- prometheus.MustNewConstMetric(pc.maxActiveProcessesDesc, prometheus.GaugeValue, float64(pool.MaxActiveProcesses), poolName, socket)
 			ch <- prometheus.MustNewConstMetric(pc.maxChildrenReachedDesc, prometheus.CounterValue, float64(pool.MaxChildrenReached), poolName, socket)
 			ch <- prometheus.MustNewConstMetric(pc.slowRequestsDesc, prometheus.CounterValue, float64(pool.SlowRequests), poolName, socket)
+
+			// --- New pool metrics ---
+			ch <- prometheus.MustNewConstMetric(pc.memoryPeakDesc, prometheus.GaugeValue, float64(pool.MemoryPeak), poolName, socket)
+			if pool.ProcessesCpu != nil {
+				ch <- prometheus.MustNewConstMetric(pc.processesCpuDesc, prometheus.GaugeValue, *pool.ProcessesCpu, poolName, socket)
+			}
+			if pool.ProcessesMemory != nil {
+				ch <- prometheus.MustNewConstMetric(pc.processesMemoryDesc, prometheus.GaugeValue, *pool.ProcessesMemory, poolName, socket)
+			}
+			if pool.ProcessesMemoryRss != nil {
+				ch <- prometheus.MustNewConstMetric(pc.processesMemoryRssDesc, prometheus.GaugeValue, *pool.ProcessesMemoryRss, poolName, socket)
+			}
+
+			// --- Per-process metrics ---
+			for _, proc := range pool.Processes {
+				labels := []string{poolName, socket, strconv.Itoa(proc.PID)}
+
+				// Process state as labeled metric (e.g. Idle, Running)
+				ch <- prometheus.MustNewConstMetric(
+					prometheus.NewDesc("phpfpm_process_state", "The state of the process (Idle, Running, ...).", []string{"pool", "socket", "pid", "state"}, nil),
+					prometheus.GaugeValue, 1, poolName, socket, strconv.Itoa(proc.PID), proc.State)
+
+				// Process request count
+				ch <- prometheus.MustNewConstMetric(
+					prometheus.NewDesc("phpfpm_process_requests", "The number of requests the process has served.", []string{"pool", "socket", "pid"}, nil),
+					prometheus.CounterValue, float64(proc.Requests), labels...)
+
+				// Last request duration
+				ch <- prometheus.MustNewConstMetric(
+					prometheus.NewDesc("phpfpm_process_request_duration", "The duration in microseconds of the last request.", []string{"pool", "socket", "pid"}, nil),
+					prometheus.GaugeValue, float64(proc.RequestDuration), labels...)
+
+				// Last request memory
+				ch <- prometheus.MustNewConstMetric(
+					prometheus.NewDesc("phpfpm_process_last_request_memory", "The max amount of memory the last request consumed.", []string{"pool", "socket", "pid"}, nil),
+					prometheus.GaugeValue, float64(proc.LastRequestMemory), labels...)
+
+				// Last request CPU
+				ch <- prometheus.MustNewConstMetric(
+					prometheus.NewDesc("phpfpm_process_last_request_cpu", "The %cpu the last request consumed.", []string{"pool", "socket", "pid"}, nil),
+					prometheus.GaugeValue, proc.LastRequestCPU, labels...)
+
+				// New: current RSS per process
+				ch <- prometheus.MustNewConstMetric(pc.processCurrentRssDesc, prometheus.GaugeValue, float64(proc.CurrentRSS), poolName, socket, strconv.Itoa(proc.PID))
+			}
 
 			// Pool config metrics
 			cfg := pool.Config
