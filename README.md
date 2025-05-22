@@ -1,15 +1,15 @@
 # ElasticPHP Agent
 
 ElasticPHP Agent is a lightweight, Go-based monitoring agent for PHP-FPM and Laravel applications.  
-It is designed to run locally, in Docker/Kubernetes, as a sidecar, or in VMs or shared hosting environments.
+It is designed to run locally, in Docker/Kubernetes or in VMs or shared hosting environments.
 
 ## Features
 
 - 📊 Exposes PHP-FPM metrics via FastCGI (using [fcgx](https://github.com/elasticphphq/fcgx))
 - ⚙️ Automatically discovers PHP-FPM pools and extracts config using `php-fpm -tt`
 - 🧠 Collects and exposes detailed Opcache statistics per FPM pool
-- 🚦 Tracks Laravel queue sizes via `php artisan queue:size`
-- 🧠 Provides Laravel application info (`about --json`)
+- 🚦 Tracks Laravel queue sizes via `php artisan tinker --execute and Queue::size()`
+- 🧠 Provides Laravel application info (`php artisan about --json`)
 - 🔌 Prometheus metrics endpoint at `/metrics`, and full JSON snapshot available at `/json`
 - ⚙️ Structured configuration via CLI flags, environment variables, or config files (YAML)
 - 🐘 Multi-site support for Laravel applications
