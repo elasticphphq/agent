@@ -27,14 +27,24 @@ jobs:
         with:
           go-version: '1.24.1'
 
+      - name: Set version info
+        id: vars
+        run: |
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_ENV"
+          echo "COMMIT=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          echo "DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - name: Build binary
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ env.VERSION }}
+          COMMIT: ${{ env.COMMIT }}
+          DATE: ${{ env.DATE }}
         run: |
           mkdir -p dist
           output="dist/elasticphp-${GOOS}-${GOARCH}"
-          go build -o "$output" .
+          go build -ldflags "-X 'main.version=${VERSION}' -X 'main.commit=${COMMIT}' -X 'main.date=${DATE}'" -o "$output" .
 
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
