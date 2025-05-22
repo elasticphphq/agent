@@ -11,7 +11,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version number",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("ElasticPHP Exporter version %s\n", Version)
+		fmt.Printf("ElasticPHP Agent version %s\n", Version)
 	},
 }
 
