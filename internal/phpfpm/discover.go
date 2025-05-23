@@ -15,11 +15,12 @@ import (
 )
 
 type DiscoveredFPM struct {
-	ConfigPath string
-	StatusPath string
-	Binary     string
-	Socket     string
-	CliBinary  string
+	ConfigPath   string
+	StatusPath   string
+	Binary       string
+	Socket       string
+	StatusSocket string
+	CliBinary    string
 }
 
 var fpmNamePattern = regexp.MustCompile(`^php[0-9]{0,2}.*fpm.*$`)
@@ -61,33 +62,14 @@ func DiscoverFPMProcesses() ([]DiscoveredFPM, error) {
 		}
 
 		for poolName, poolConfig := range parsed.Pools {
-			// skip empty or malformed pools
-			socket := poolConfig["listen"]
+			socket := parseSocket(poolConfig["listen"])
 			if socket == "" {
 				continue
 			}
-			if strings.HasPrefix(socket, "/") {
-				socket = "unix://" + socket
-			} else if strings.Contains(socket, ":") {
-				socket = "tcp://" + socket
-			} else {
-				// fallback if only a port is specified
-				try := []string{"127.0.0.1:" + socket, "[::1]:" + socket}
-				resolved := ""
-				for _, candidate := range try {
-					conn, err := net.DialTimeout("tcp", candidate, 500*time.Millisecond)
-					if err == nil {
-						conn.Close()
-						resolved = candidate
-						break
-					}
-				}
-				if resolved != "" {
-					socket = "tcp://" + resolved
-				} else {
-					logging.L().Warn("Unsupported FPM socket format", "original", socket)
-					continue
-				}
+
+			statusSocket := parseSocket(poolConfig["status_listen"])
+			if statusSocket == "" {
+				statusSocket = socket
 			}
 
 			status := poolConfig["pm.status_path"]
@@ -102,17 +84,19 @@ func DiscoverFPMProcesses() ([]DiscoveredFPM, error) {
 			cliBinary, _ := findMatchingCliBinary(exe)
 
 			found = append(found, DiscoveredFPM{
-				ConfigPath: config,
-				StatusPath: status,
-				Binary:     exe,
-				Socket:     socket,
-				CliBinary:  cliBinary,
+				ConfigPath:   config,
+				StatusPath:   status,
+				Binary:       exe,
+				Socket:       socket,
+				StatusSocket: statusSocket,
+				CliBinary:    cliBinary,
 			})
 
 			logging.L().Debug("Discovered php-fpm pool",
 				"config", config,
 				"pool", poolName,
 				"socket", socket,
+				"status_socket", statusSocket,
 				"status_path", status,
 				"cli_binary", cliBinary,
 			)
@@ -120,6 +104,35 @@ func DiscoverFPMProcesses() ([]DiscoveredFPM, error) {
 	}
 
 	return found, nil
+}
+
+func parseSocket(socket string) string {
+	if socket == "" {
+		return ""
+	}
+	if strings.HasPrefix(socket, "/") {
+		return "unix://" + socket
+	} else if strings.Contains(socket, ":") {
+		return "tcp://" + socket
+	} else {
+		// fallback if only a port is specified
+		try := []string{"127.0.0.1:" + socket, "[::1]:" + socket}
+		resolved := ""
+		for _, candidate := range try {
+			conn, err := net.DialTimeout("tcp", candidate, 500*time.Millisecond)
+			if err == nil {
+				conn.Close()
+				resolved = candidate
+				break
+			} else {
+				logging.L().Warn("Failed to connect to socket", "socket", candidate, "error", err)
+			}
+		}
+		if resolved != "" {
+			return "tcp://" + resolved
+		}
+	}
+	return ""
 }
 
 func extractConfigFromMaster(cmdline string) string {

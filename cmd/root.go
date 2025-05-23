@@ -110,11 +110,12 @@ var rootCmd = &cobra.Command{
 				logging.L().Debug("Discovered FPM Processes", "pools", discovered)
 				for _, d := range discovered {
 					Config.PHPFpm.Pools = append(Config.PHPFpm.Pools, config.FPMPoolConfig{
-						Socket:     d.Socket,
-						StatusPath: d.StatusPath,
-						ConfigPath: d.ConfigPath,
-						Binary:     d.Binary,
-						CliBinary:  d.CliBinary,
+						Socket:       d.Socket,
+						StatusSocket: d.StatusSocket,
+						StatusPath:   d.StatusPath,
+						ConfigPath:   d.ConfigPath,
+						Binary:       d.Binary,
+						CliBinary:    d.CliBinary,
 					})
 				}
 			}

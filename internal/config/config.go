@@ -35,6 +35,7 @@ type FPMConfig struct {
 
 type FPMPoolConfig struct {
 	Socket            string        `mapstructure:"socket"`
+	StatusSocket      string        `mapstructure:"status_socket"`
 	StatusPath        string        `mapstructure:"status_path"`
 	StatusPathEnabled bool          `mapstructure:"status_path_enabled"`
 	ConfigPath        string        `mapstructure:"config_path"`

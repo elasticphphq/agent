@@ -77,7 +77,7 @@ func GetMetrics(ctx context.Context, cfg *config.Config) (map[string]*Result, er
 			Global:    make(map[string]string),
 		}
 
-		scheme, address, path, err := ParseAddress(poolCfg.Socket, poolCfg.StatusPath)
+		scheme, address, path, err := ParseAddress(poolCfg.StatusSocket, poolCfg.StatusPath)
 		if err != nil {
 			log.Printf("invalid FPM socket address: %v", err)
 			continue
@@ -198,7 +198,7 @@ func GetMetrics(ctx context.Context, cfg *config.Config) (map[string]*Result, er
 }
 
 func GetMetricsForPool(ctx context.Context, pool config.FPMPoolConfig) (*Result, error) {
-	scheme, address, path, err := ParseAddress(pool.Socket, pool.StatusPath)
+	scheme, address, path, err := ParseAddress(pool.StatusSocket, pool.StatusPath)
 	if err != nil {
 		return nil, fmt.Errorf("invalid FPM socket address: %w", err)
 	}
