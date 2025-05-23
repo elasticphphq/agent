@@ -380,18 +380,20 @@ func (pc *PrometheusCollector) Collect(ch chan<- prometheus.Metric) {
 
 			// Opcache metrics
 			ch <- prometheus.MustNewConstMetric(pc.opcacheEnabledDesc, prometheus.GaugeValue, boolToFloat(pool.OpcacheStatus.Enabled), poolName, socket)
-			ch <- prometheus.MustNewConstMetric(pc.opcacheUsedMemoryDesc, prometheus.GaugeValue, float64(pool.OpcacheStatus.MemoryUsage.UsedMemory), poolName, socket)
-			ch <- prometheus.MustNewConstMetric(pc.opcacheFreeMemoryDesc, prometheus.GaugeValue, float64(pool.OpcacheStatus.MemoryUsage.FreeMemory), poolName, socket)
-			ch <- prometheus.MustNewConstMetric(pc.opcacheWastedMemoryDesc, prometheus.GaugeValue, float64(pool.OpcacheStatus.MemoryUsage.WastedMemory), poolName, socket)
-			ch <- prometheus.MustNewConstMetric(pc.opcacheWastedPercentDesc, prometheus.GaugeValue, pool.OpcacheStatus.MemoryUsage.CurrentWastedPct, poolName, socket)
-			ch <- prometheus.MustNewConstMetric(pc.opcacheCachedScriptsDesc, prometheus.GaugeValue, float64(pool.OpcacheStatus.Statistics.NumCachedScripts), poolName, socket)
-			ch <- prometheus.MustNewConstMetric(pc.opcacheHitsDesc, prometheus.CounterValue, float64(pool.OpcacheStatus.Statistics.Hits), poolName, socket)
-			ch <- prometheus.MustNewConstMetric(pc.opcacheMissesDesc, prometheus.CounterValue, float64(pool.OpcacheStatus.Statistics.Misses), poolName, socket)
-			ch <- prometheus.MustNewConstMetric(pc.opcacheBlacklistMissesDesc, prometheus.CounterValue, float64(pool.OpcacheStatus.Statistics.BlacklistMisses), poolName, socket)
-			ch <- prometheus.MustNewConstMetric(pc.opcacheOomRestartsDesc, prometheus.CounterValue, float64(pool.OpcacheStatus.Statistics.OomRestarts), poolName, socket)
-			ch <- prometheus.MustNewConstMetric(pc.opcacheHashRestartsDesc, prometheus.CounterValue, float64(pool.OpcacheStatus.Statistics.HashRestarts), poolName, socket)
-			ch <- prometheus.MustNewConstMetric(pc.opcacheManualRestartsDesc, prometheus.CounterValue, float64(pool.OpcacheStatus.Statistics.ManualRestarts), poolName, socket)
-			ch <- prometheus.MustNewConstMetric(pc.opcacheHitRateDesc, prometheus.GaugeValue, pool.OpcacheStatus.Statistics.HitRate, poolName, socket)
+			if pool.OpcacheStatus.Enabled {
+				ch <- prometheus.MustNewConstMetric(pc.opcacheUsedMemoryDesc, prometheus.GaugeValue, float64(pool.OpcacheStatus.MemoryUsage.UsedMemory), poolName, socket)
+				ch <- prometheus.MustNewConstMetric(pc.opcacheFreeMemoryDesc, prometheus.GaugeValue, float64(pool.OpcacheStatus.MemoryUsage.FreeMemory), poolName, socket)
+				ch <- prometheus.MustNewConstMetric(pc.opcacheWastedMemoryDesc, prometheus.GaugeValue, float64(pool.OpcacheStatus.MemoryUsage.WastedMemory), poolName, socket)
+				ch <- prometheus.MustNewConstMetric(pc.opcacheWastedPercentDesc, prometheus.GaugeValue, pool.OpcacheStatus.MemoryUsage.CurrentWastedPct, poolName, socket)
+				ch <- prometheus.MustNewConstMetric(pc.opcacheCachedScriptsDesc, prometheus.GaugeValue, float64(pool.OpcacheStatus.Statistics.NumCachedScripts), poolName, socket)
+				ch <- prometheus.MustNewConstMetric(pc.opcacheHitsDesc, prometheus.CounterValue, float64(pool.OpcacheStatus.Statistics.Hits), poolName, socket)
+				ch <- prometheus.MustNewConstMetric(pc.opcacheMissesDesc, prometheus.CounterValue, float64(pool.OpcacheStatus.Statistics.Misses), poolName, socket)
+				ch <- prometheus.MustNewConstMetric(pc.opcacheBlacklistMissesDesc, prometheus.CounterValue, float64(pool.OpcacheStatus.Statistics.BlacklistMisses), poolName, socket)
+				ch <- prometheus.MustNewConstMetric(pc.opcacheOomRestartsDesc, prometheus.CounterValue, float64(pool.OpcacheStatus.Statistics.OomRestarts), poolName, socket)
+				ch <- prometheus.MustNewConstMetric(pc.opcacheHashRestartsDesc, prometheus.CounterValue, float64(pool.OpcacheStatus.Statistics.HashRestarts), poolName, socket)
+				ch <- prometheus.MustNewConstMetric(pc.opcacheManualRestartsDesc, prometheus.CounterValue, float64(pool.OpcacheStatus.Statistics.ManualRestarts), poolName, socket)
+				ch <- prometheus.MustNewConstMetric(pc.opcacheHitRateDesc, prometheus.GaugeValue, pool.OpcacheStatus.Statistics.HitRate, poolName, socket)
+			}
 
 			// Pool config metrics
 			cfg := pool.Config

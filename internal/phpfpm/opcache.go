@@ -55,7 +55,7 @@ exit;`
 	}
 	tmpFile.Close()
 
-	scheme, address, _, err := ParseAddress(cfg.Socket, "")
+	scheme, address, _, err := ParseAddress(cfg.StatusSocket, "")
 	if err != nil {
 		return nil, fmt.Errorf("invalid socket: %w", err)
 	}

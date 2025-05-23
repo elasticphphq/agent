@@ -67,7 +67,7 @@ func getPHPExtensions(bin string) ([]string, error) {
 }
 
 func getPHPConfig(ctx context.Context, cfg config.FPMPoolConfig) (map[string]interface{}, error) {
-	scheme, address, _, err := ParseAddress(cfg.Socket, cfg.StatusPath)
+	scheme, address, _, err := ParseAddress(cfg.StatusSocket, cfg.StatusPath)
 	if err != nil {
 		return nil, fmt.Errorf("invalid FPM socket address: %w", err)
 	}
