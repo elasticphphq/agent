@@ -5,6 +5,7 @@ import (
 	"github.com/elasticphphq/agent/internal/phpfpm"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/elasticphphq/agent/internal/config"
 	"github.com/elasticphphq/agent/internal/logging"
@@ -103,9 +104,23 @@ var rootCmd = &cobra.Command{
 
 		// phpfpm autodiscover
 		if Config.PHPFpm.Enabled && Config.PHPFpm.Autodiscover {
-			discovered, err := phpfpm.DiscoverFPMProcesses()
+			var discovered []phpfpm.DiscoveredFPM
+			var err error
+
+			for i := 0; i < Config.PHPFpm.Retries; i++ {
+				discovered, err = phpfpm.DiscoverFPMProcesses()
+				if err == nil && len(discovered) > 0 {
+					break
+				}
+
+				logging.L().Warn("Autodiscover attempt failed", "attempt", i+1, "error", err)
+				time.Sleep(time.Duration(Config.PHPFpm.RetryDelay) * time.Second)
+			}
+
 			if err != nil {
-				logging.L().Error("Autodiscover failed", "error", err)
+				logging.L().Error("Autodiscover failed after retries", "error", err)
+			} else if len(discovered) == 0 {
+				logging.L().Error("Autodiscover succeeded but no FPM pools found")
 			} else {
 				logging.L().Debug("Discovered FPM Processes", "pools", discovered)
 				for _, d := range discovered {
@@ -135,10 +150,12 @@ func Execute() {
 func init() {
 	rootCmd.PersistentFlags().Bool("debug", false, "Debug mode")
 	rootCmd.PersistentFlags().String("config", "", "config file path")
+	rootCmd.PersistentFlags().Bool("autodiscover", true, "Autodiscover php-fpm pools")
 	rootCmd.PersistentFlags().String("log-level", "", "Override log level (e.g. debug, info, warn)")
 	rootCmd.PersistentFlags().StringArrayVar(&laravelFlags, "laravel", nil, "Laravel site config: name=...,path=...")
 	_ = viper.BindPFlag("debug", rootCmd.PersistentFlags().Lookup("debug"))
 	_ = viper.BindPFlag("config", rootCmd.PersistentFlags().Lookup("config"))
+	_ = viper.BindPFlag("phpfpm.autodiscover", rootCmd.PersistentFlags().Lookup("autodiscover"))
 	_ = viper.BindPFlag("log-level", rootCmd.PersistentFlags().Lookup("log-level"))
 
 	viper.SetEnvPrefix("ELASTICPHP")
