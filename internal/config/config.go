@@ -29,6 +29,8 @@ type PHPConfig struct {
 type FPMConfig struct {
 	Enabled      bool            `mapstructure:"enabled"`
 	Autodiscover bool            `mapstructure:"autodiscover"`
+	Retries      int             `mapstructure:"retries"`
+	RetryDelay   int             `mapstructure:"retry_delay"`
 	Pools        []FPMPoolConfig `mapstructure:"pools"`
 	PollInterval time.Duration   `mapstructure:"poll_interval"`
 }
@@ -62,6 +64,8 @@ func Load() (*Config, error) {
 
 	viper.SetDefault("phpfpm.enabled", true)
 	viper.SetDefault("phpfpm.autodiscover", true)
+	viper.SetDefault("phpfpm.retries", 5)
+	viper.SetDefault("phpfpm.retry_delay", 2)
 	viper.SetDefault("phpfpm.poll_interval", "1s")
 	viper.SetDefault("phpfpm.pools", []FPMPoolConfig{})
 
