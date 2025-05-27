@@ -137,7 +137,7 @@ func NewPrometheusCollector(cfg *config.Config) *PrometheusCollector {
 		cpuLimitDesc:      prometheus.NewDesc("system_cpu_limit", "Logical CPU limit", nil, nil),
 		memoryLimitMBDesc: prometheus.NewDesc("system_memory_limit_mb", "Memory limit in MB", nil, nil),
 
-		laravelInfoDesc: prometheus.NewDesc("laravel_app_info", "Basic information about Laravel site", []string{"site", "version", "php_version", "env", "debug_mode"}, nil),
+		laravelInfoDesc: prometheus.NewDesc("laravel_app_info", "Basic information about Laravel site", []string{"site", "version", "php_version", "environment", "debug_mode"}, nil),
 	}
 }
 
