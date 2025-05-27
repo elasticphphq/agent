@@ -60,6 +60,8 @@ var rootCmd = &cobra.Command{
 						site.Name = val
 					case "path":
 						site.Path = val
+					case "appinfo":
+						site.EnableAppInfo = val == "true"
 					case "connection":
 						lastConnection = val
 						if _, ok := site.Queues[lastConnection]; !ok {

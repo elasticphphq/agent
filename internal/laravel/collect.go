@@ -6,8 +6,8 @@ import (
 )
 
 type LaravelMetrics struct {
-	Queues QueueSizes `json:"queues"`
-	Info   AppInfo    `json:"app_info"`
+	Queues *QueueSizes `json:"queues"`
+	Info   *AppInfo    `json:"app_info"`
 }
 
 // Collect gathers Laravel queue metrics for all configured sites.
@@ -27,7 +27,7 @@ func Collect(ctx context.Context, cfg *config.Config) (map[string]LaravelMetrics
 			continue
 		}
 
-		info, err := GetAppInfo(site.Path, php)
+		info, err := GetAppInfo(site, php)
 		if err != nil {
 			errors["laravel:"+site.Name+":info"] = err.Error()
 		}
@@ -35,7 +35,7 @@ func Collect(ctx context.Context, cfg *config.Config) (map[string]LaravelMetrics
 		if info != nil {
 			result[site.Name] = LaravelMetrics{
 				Queues: queues,
-				Info:   *info,
+				Info:   info,
 			}
 		} else {
 			result[site.Name] = LaravelMetrics{

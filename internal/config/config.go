@@ -48,10 +48,11 @@ type FPMPoolConfig struct {
 }
 
 type LaravelConfig struct {
-	Name      string              `mapstructure:"name"`       // Optional name for identification
-	Path      string              `mapstructure:"path"`       // Root path to Laravel app
-	PHPConfig *PHPConfig          `mapstructure:"php_config"` // Optional override of global PHP config
-	Queues    map[string][]string `mapstructure:"queues"`     // Map of connection name to list of queue names
+	Name          string              `mapstructure:"name"` // Optional name for identification
+	Path          string              `mapstructure:"path"` // Root path to Laravel app
+	EnableAppInfo bool                `mapstructure:"enable_app_info"`
+	PHPConfig     *PHPConfig          `mapstructure:"php_config"` // Optional override of global PHP config
+	Queues        map[string][]string `mapstructure:"queues"`     // Map of connection name to list of queue names
 }
 
 type MonitorConfig struct {

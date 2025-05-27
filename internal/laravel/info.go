@@ -4,12 +4,36 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/elasticphphq/agent/internal/logging"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"sync"
+
+	"github.com/elasticphphq/agent/internal/config"
+	"github.com/elasticphphq/agent/internal/logging"
 )
 
-// StringOrSlice is a custom type that unmarshals from either a string or a slice of strings.
+type BoolString bool
+
+func (b *BoolString) UnmarshalJSON(data []byte) error {
+	var asBool bool
+	if err := json.Unmarshal(data, &asBool); err == nil {
+		*b = BoolString(asBool)
+		return nil
+	}
+	var asString string
+	if err := json.Unmarshal(data, &asString); err == nil {
+		switch strings.ToLower(asString) {
+		case "enabled", "true", "on", "yes", "cached":
+			*b = true
+		default:
+			*b = false
+		}
+		return nil
+	}
+	return fmt.Errorf("invalid boolean value: %s", string(data))
+}
+
 type StringOrSlice []string
 
 func (s *StringOrSlice) UnmarshalJSON(data []byte) error {
@@ -28,23 +52,23 @@ func (s *StringOrSlice) UnmarshalJSON(data []byte) error {
 
 type AppInfo struct {
 	Environment struct {
-		ApplicationName string `json:"application_name"`
-		LaravelVersion  string `json:"laravel_version"`
-		PHPVersion      string `json:"php_version"`
-		ComposerVersion string `json:"composer_version"`
-		Environment     string `json:"environment"`
-		DebugMode       bool   `json:"debug_mode"`
-		URL             string `json:"url"`
-		MaintenanceMode bool   `json:"maintenance_mode"`
-		Timezone        string `json:"timezone"`
-		Locale          string `json:"locale"`
+		ApplicationName string     `json:"application_name"`
+		LaravelVersion  string     `json:"laravel_version"`
+		PHPVersion      string     `json:"php_version"`
+		ComposerVersion string     `json:"composer_version"`
+		Environment     string     `json:"environment"`
+		DebugMode       BoolString `json:"debug_mode"`
+		URL             string     `json:"url"`
+		MaintenanceMode BoolString `json:"maintenance_mode"`
+		Timezone        string     `json:"timezone"`
+		Locale          string     `json:"locale"`
 	} `json:"environment"`
 
 	Cache struct {
-		Config bool `json:"config"`
-		Events bool `json:"events"`
-		Routes bool `json:"routes"`
-		Views  bool `json:"views"`
+		Config BoolString `json:"config"`
+		Events BoolString `json:"events"`
+		Routes BoolString `json:"routes"`
+		Views  BoolString `json:"views"`
 	} `json:"cache"`
 
 	Drivers struct {
@@ -60,13 +84,36 @@ type AppInfo struct {
 	Livewire map[string]string `json:"livewire,omitempty"`
 }
 
-func GetAppInfo(appPath string, phpBinary string) (*AppInfo, error) {
-	if phpBinary == "" || appPath == "" {
-		return nil, fmt.Errorf("invalid input: phpBinary and appPath are required")
+var (
+	appInfoCache = make(map[string]*AppInfo)
+	cacheMutex   sync.RWMutex
+)
+
+func GetAppInfo(site config.LaravelConfig, phpBinary string) (*AppInfo, error) {
+	if !site.EnableAppInfo {
+		return nil, nil
 	}
 
-	cmd := exec.Command(phpBinary, "artisan", "about", "--json")
-	cmd.Dir = filepath.Clean(appPath)
+	if phpBinary == "" || site.Path == "" {
+		return nil, fmt.Errorf("invalid input: phpBinary and path are required")
+	}
+
+	cacheKey := filepath.Clean(site.Path)
+
+	cacheMutex.RLock()
+	info, ok := appInfoCache[cacheKey]
+	cacheMutex.RUnlock()
+	if ok {
+		if info == nil {
+			return nil, fmt.Errorf("app info was previously attempted but failed")
+		}
+		return info, nil
+	}
+
+	logging.L().Debug("Uncached app info. Calling artisan about", "path", site.Path)
+
+	cmd := exec.Command(phpBinary, "-d", "error_reporting=E_ALL & ~E_DEPRECATED", "artisan", "about", "--json")
+	cmd.Dir = cacheKey
 
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -74,15 +121,23 @@ func GetAppInfo(appPath string, phpBinary string) (*AppInfo, error) {
 
 	err := cmd.Run()
 	if err != nil {
-		return nil, fmt.Errorf("artisan tinker failed: %w\nOutput: %s", err, out.String())
+		cacheMutex.Lock()
+		appInfoCache[cacheKey] = nil
+		cacheMutex.Unlock()
+		return nil, fmt.Errorf("artisan about failed: %w\nOutput: %s", err, out.String())
 	}
 
-	logging.L().Debug("Raw Laravel info", "output", out.String(), "binary", phpBinary, "dir", cmd.Dir, "args", cmd.Args)
-
-	var info AppInfo
-	if err := json.Unmarshal(out.Bytes(), &info); err != nil {
+	var parsed AppInfo
+	if err := json.Unmarshal(out.Bytes(), &parsed); err != nil {
+		cacheMutex.Lock()
+		appInfoCache[cacheKey] = nil
+		cacheMutex.Unlock()
 		return nil, fmt.Errorf("failed to parse output: %w\nOutput: %s", err, out.String())
 	}
 
-	return &info, nil
+	cacheMutex.Lock()
+	appInfoCache[cacheKey] = &parsed
+	cacheMutex.Unlock()
+
+	return &parsed, nil
 }

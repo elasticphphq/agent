@@ -233,73 +233,82 @@ func (pc *PrometheusCollector) Collect(ch chan<- prometheus.Metric) {
 		if lm == nil {
 			continue
 		}
+
 		info := lm
-		debugMode := "false"
-		if info.Info.Environment.DebugMode {
-			debugMode = "true"
-		}
-		ch <- prometheus.MustNewConstMetric(pc.laravelInfoDesc, prometheus.GaugeValue, 1,
-			site,
-			info.Info.Environment.LaravelVersion,
-			info.Info.Environment.PHPVersion,
-			info.Info.Environment.Environment,
-			debugMode,
-		)
 
-		// Export Laravel cache status metrics
-		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("laravel_cache_config", "Is config cache enabled", []string{"site"}, nil),
-			prometheus.GaugeValue, boolToFloat(info.Info.Cache.Config), site)
-		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("laravel_cache_events", "Is events cache enabled", []string{"site"}, nil),
-			prometheus.GaugeValue, boolToFloat(info.Info.Cache.Events), site)
-		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("laravel_cache_routes", "Is routes cache enabled", []string{"site"}, nil),
-			prometheus.GaugeValue, boolToFloat(info.Info.Cache.Routes), site)
-		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("laravel_cache_views", "Is views cache enabled", []string{"site"}, nil),
-			prometheus.GaugeValue, boolToFloat(info.Info.Cache.Views), site)
+		if lm.Info != nil {
 
-		// Export Laravel environment metadata metrics
-		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("laravel_maintenance_mode", "Whether Laravel is in maintenance mode", []string{"site"}, nil),
-			prometheus.GaugeValue, boolToFloat(info.Info.Environment.MaintenanceMode), site)
-		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("laravel_debug_mode", "Whether Laravel debug mode is enabled", []string{"site"}, nil),
-			prometheus.GaugeValue, boolToFloat(info.Info.Environment.DebugMode), site)
+			debugMode := "false"
+			if info.Info.Environment.DebugMode {
+				debugMode = "true"
+			}
 
-		// Export Laravel drivers metrics
-		drivers := info.Info.Drivers
-		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("laravel_driver_info", "Configured Laravel driver", []string{"site", "type", "value"}, nil),
-			prometheus.GaugeValue, 1, site, "broadcasting", drivers.Broadcasting)
-		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("laravel_driver_info", "Configured Laravel driver", []string{"site", "type", "value"}, nil),
-			prometheus.GaugeValue, 1, site, "cache", drivers.Cache)
-		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("laravel_driver_info", "Configured Laravel driver", []string{"site", "type", "value"}, nil),
-			prometheus.GaugeValue, 1, site, "database", drivers.Database)
-		for _, log := range drivers.Logs {
+			ch <- prometheus.MustNewConstMetric(pc.laravelInfoDesc, prometheus.GaugeValue, 1,
+				site,
+				info.Info.Environment.LaravelVersion,
+				info.Info.Environment.PHPVersion,
+				info.Info.Environment.Environment,
+				debugMode,
+			)
+
+			// Laravel cache status
+			ch <- prometheus.MustNewConstMetric(
+				prometheus.NewDesc("laravel_cache_config", "Is config cache enabled", []string{"site"}, nil),
+				prometheus.GaugeValue, boolToFloat(bool(info.Info.Cache.Config)), site)
+			ch <- prometheus.MustNewConstMetric(
+				prometheus.NewDesc("laravel_cache_events", "Is events cache enabled", []string{"site"}, nil),
+				prometheus.GaugeValue, boolToFloat(bool(info.Info.Cache.Events)), site)
+			ch <- prometheus.MustNewConstMetric(
+				prometheus.NewDesc("laravel_cache_routes", "Is routes cache enabled", []string{"site"}, nil),
+				prometheus.GaugeValue, boolToFloat(bool(info.Info.Cache.Routes)), site)
+			ch <- prometheus.MustNewConstMetric(
+				prometheus.NewDesc("laravel_cache_views", "Is views cache enabled", []string{"site"}, nil),
+				prometheus.GaugeValue, boolToFloat(bool(info.Info.Cache.Views)), site)
+
+			// Laravel environment
+			ch <- prometheus.MustNewConstMetric(
+				prometheus.NewDesc("laravel_maintenance_mode", "Whether Laravel is in maintenance mode", []string{"site"}, nil),
+				prometheus.GaugeValue, boolToFloat(bool(info.Info.Environment.MaintenanceMode)), site)
+			ch <- prometheus.MustNewConstMetric(
+				prometheus.NewDesc("laravel_debug_mode", "Whether Laravel debug mode is enabled", []string{"site"}, nil),
+				prometheus.GaugeValue, boolToFloat(bool(info.Info.Environment.DebugMode)), site)
+
+			// Laravel drivers
+			drivers := info.Info.Drivers
 			ch <- prometheus.MustNewConstMetric(
 				prometheus.NewDesc("laravel_driver_info", "Configured Laravel driver", []string{"site", "type", "value"}, nil),
-				prometheus.GaugeValue, 1, site, "logs", log)
-		}
-		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("laravel_driver_info", "Configured Laravel driver", []string{"site", "type", "value"}, nil),
-			prometheus.GaugeValue, 1, site, "mail", drivers.Mail)
-		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("laravel_driver_info", "Configured Laravel driver", []string{"site", "type", "value"}, nil),
-			prometheus.GaugeValue, 1, site, "queue", drivers.Queue)
-		ch <- prometheus.MustNewConstMetric(
-			prometheus.NewDesc("laravel_driver_info", "Configured Laravel driver", []string{"site", "type", "value"}, nil),
-			prometheus.GaugeValue, 1, site, "session", drivers.Session)
-
-		// Export Laravel queue sizes
-		for conn, queues := range info.Queues {
-			for queue, qdata := range queues {
+				prometheus.GaugeValue, 1, site, "broadcasting", drivers.Broadcasting)
+			ch <- prometheus.MustNewConstMetric(
+				prometheus.NewDesc("laravel_driver_info", "Configured Laravel driver", []string{"site", "type", "value"}, nil),
+				prometheus.GaugeValue, 1, site, "cache", drivers.Cache)
+			ch <- prometheus.MustNewConstMetric(
+				prometheus.NewDesc("laravel_driver_info", "Configured Laravel driver", []string{"site", "type", "value"}, nil),
+				prometheus.GaugeValue, 1, site, "database", drivers.Database)
+			for _, logDrivers := range drivers.Logs {
 				ch <- prometheus.MustNewConstMetric(
-					prometheus.NewDesc("laravel_queue_size", "Number of jobs in queue", []string{"site", "connection", "queue"}, nil),
-					prometheus.GaugeValue, float64(qdata.Size), site, conn, queue)
+					prometheus.NewDesc("laravel_driver_info", "Configured Laravel driver", []string{"site", "type", "value"}, nil),
+					prometheus.GaugeValue, 1, site, "logs", logDrivers)
+			}
+			ch <- prometheus.MustNewConstMetric(
+				prometheus.NewDesc("laravel_driver_info", "Configured Laravel driver", []string{"site", "type", "value"}, nil),
+				prometheus.GaugeValue, 1, site, "mail", drivers.Mail)
+			ch <- prometheus.MustNewConstMetric(
+				prometheus.NewDesc("laravel_driver_info", "Configured Laravel driver", []string{"site", "type", "value"}, nil),
+				prometheus.GaugeValue, 1, site, "queue", drivers.Queue)
+			ch <- prometheus.MustNewConstMetric(
+				prometheus.NewDesc("laravel_driver_info", "Configured Laravel driver", []string{"site", "type", "value"}, nil),
+				prometheus.GaugeValue, 1, site, "session", drivers.Session)
+
+		}
+
+		// Laravel queue sizes
+		if info.Queues != nil {
+			for conn, queues := range *info.Queues {
+				for queue, qdata := range queues {
+					ch <- prometheus.MustNewConstMetric(
+						prometheus.NewDesc("laravel_queue_size", "Number of jobs in queue", []string{"site", "connection", "queue"}, nil),
+						prometheus.GaugeValue, float64(qdata.Size), site, conn, queue)
+				}
 			}
 		}
 	}
