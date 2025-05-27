@@ -45,7 +45,7 @@ foreach (%s as $q) {
 
 echo json_encode($sizes);`
 
-	cmd := exec.Command(phpBinary, "artisan", "tinker", "--execute", script)
+	cmd := exec.Command(phpBinary, "-d", "error_reporting=E_ALL & ~E_DEPRECATED", "artisan", "tinker", "--execute", script)
 	cmd.Dir = filepath.Clean(appPath)
 
 	var out bytes.Buffer
