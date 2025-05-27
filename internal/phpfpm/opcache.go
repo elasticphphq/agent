@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/elasticphphq/agent/internal/config"
-	"github.com/elasticphphq/agent/internal/logging"
 	"github.com/elasticphphq/fcgx"
 	"os"
 	"path/filepath"
@@ -84,8 +83,6 @@ exit;`
 	if err != nil {
 		return nil, fmt.Errorf("failed to read opcache response: %w", err)
 	}
-
-	logging.L().Debug("Raw opcache output", "body", string(body))
 
 	var status OpcacheStatus
 	if err := json.Unmarshal(body, &status); err != nil {
