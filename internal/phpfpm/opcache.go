@@ -35,24 +35,19 @@ type Stats struct {
 }
 
 func GetOpcacheStatus(ctx context.Context, cfg config.FPMPoolConfig) (*OpcacheStatus, error) {
-	scriptContent := `<?php
+	tmpPath := "/tmp/elasticphp-opcache-status.php"
+	if _, err := os.Stat(tmpPath); os.IsNotExist(err) {
+		scriptContent := `<?php
 error_reporting(0);
 ini_set('display_errors', 0);
 header("Status: 200 OK");
 header("Content-Type: application/json");
 echo json_encode(opcache_get_status());
 exit;`
-	tmpFile, err := os.CreateTemp("/tmp", "opcache-status-*.php")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temp PHP script: %w", err)
+		if err := os.WriteFile(tmpPath, []byte(scriptContent), 0644); err != nil {
+			return nil, fmt.Errorf("failed to write PHP script: %w", err)
+		}
 	}
-	defer os.Remove(tmpFile.Name())
-
-	if _, err := tmpFile.WriteString(scriptContent); err != nil {
-		tmpFile.Close()
-		return nil, fmt.Errorf("failed to write temp PHP script: %w", err)
-	}
-	tmpFile.Close()
 
 	scheme, address, _, err := ParseAddress(cfg.StatusSocket, "")
 	if err != nil {
@@ -65,7 +60,7 @@ exit;`
 	}
 	defer client.Close()
 
-	scriptPath := tmpFile.Name()
+	scriptPath := tmpPath
 	env := map[string]string{
 		"SCRIPT_FILENAME": scriptPath,
 		"SCRIPT_NAME":     "/" + filepath.Base(scriptPath),

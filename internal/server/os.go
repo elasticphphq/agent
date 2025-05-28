@@ -6,6 +6,14 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
+)
+
+var (
+	sysInfoMu        sync.Mutex
+	cachedSystemInfo *SystemInfoData
+	lastSystemCheck  time.Time
 )
 
 type NodeType string
@@ -31,11 +39,21 @@ type SystemInfoData struct {
 }
 
 func DetectSystem() *SystemInfoData {
-	info := SystemInfo{
-		NodeType: detectNodeType(),
-		OS:       runtime.GOOS,
+	sysInfoMu.Lock()
+	if cachedSystemInfo != nil && time.Since(lastSystemCheck) < 10*time.Minute {
+		defer sysInfoMu.Unlock()
+		return cachedSystemInfo
 	}
-	info.Architecture = runtime.GOARCH
+	sysInfoMu.Unlock()
+
+	sysInfoMu.Lock()
+	defer sysInfoMu.Unlock()
+
+	info := SystemInfo{
+		NodeType:     detectNodeType(),
+		OS:           runtime.GOOS,
+		Architecture: runtime.GOARCH,
+	}
 	errors := make(map[string]string)
 
 	cpu, err := detectCPULimit()
@@ -52,10 +70,13 @@ func DetectSystem() *SystemInfoData {
 		info.MemoryLimitMB = mem
 	}
 
-	return &SystemInfoData{
+	cachedSystemInfo = &SystemInfoData{
 		SystemInfo: &info,
 		Errors:     errors,
 	}
+	lastSystemCheck = time.Now()
+
+	return cachedSystemInfo
 }
 
 func detectNodeType() NodeType {

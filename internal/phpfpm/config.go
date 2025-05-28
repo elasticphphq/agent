@@ -6,14 +6,31 @@ import (
 	"os/exec"
 	"strings"
 )
+import (
+	"sync"
+)
+
+var (
+	fpmConfigCache     = make(map[string]*FPMConfig)
+	fpmConfigCacheLock sync.Mutex
+)
 
 type FPMConfig struct {
 	Global map[string]string
 	Pools  map[string]map[string]string
 }
 
-// ParseFPMConfig returns a parsed FPM configuration separated into global and pools
 func ParseFPMConfig(FPMBinaryPath string, FPMConfigPath string) (*FPMConfig, error) {
+	key := FPMBinaryPath + "::" + FPMConfigPath
+
+	fpmConfigCacheLock.Lock()
+	cached, ok := fpmConfigCache[key]
+	fpmConfigCacheLock.Unlock()
+
+	if ok {
+		return cached, nil
+	}
+
 	cmd := exec.Command(FPMBinaryPath, "-tt", "--fpm-config", FPMConfigPath)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -30,12 +47,10 @@ func ParseFPMConfig(FPMBinaryPath string, FPMConfigPath string) (*FPMConfig, err
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 
-		// Remove everything before and including '] NOTICE:'
 		if idx := strings.Index(line, "] NOTICE:"); idx != -1 {
 			line = strings.TrimSpace(line[idx+len("] NOTICE:"):])
 		}
 
-		// Clean up tabs and quotes
 		line = strings.ReplaceAll(line, "\\t", "")
 		line = strings.ReplaceAll(line, "\t", "")
 		line = strings.TrimSpace(strings.Trim(line, `"`))
@@ -44,7 +59,6 @@ func ParseFPMConfig(FPMBinaryPath string, FPMConfigPath string) (*FPMConfig, err
 			continue
 		}
 
-		// Detect pool name from: [pool herd]
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
 			section := strings.TrimSuffix(strings.TrimPrefix(line, "["), "]")
 			if section == "global" {
@@ -80,6 +94,10 @@ func ParseFPMConfig(FPMBinaryPath string, FPMConfigPath string) (*FPMConfig, err
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("failed to scan php-fpm config output: %w", err)
 	}
+
+	fpmConfigCacheLock.Lock()
+	fpmConfigCache[key] = fpmconfig
+	fpmConfigCacheLock.Unlock()
 
 	return fpmconfig, nil
 }

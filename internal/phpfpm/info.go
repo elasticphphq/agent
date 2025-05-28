@@ -12,6 +12,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
+)
+
+var (
+	phpInfoMu       sync.Mutex
+	cachedPHPInfo   *Info
+	phpInfoErr      error
+	lastPHPInfoTime time.Time
 )
 
 type Info struct {
@@ -21,21 +30,33 @@ type Info struct {
 }
 
 func GetPHPStats(ctx context.Context, cfg config.FPMPoolConfig) (*Info, error) {
+	phpInfoMu.Lock()
+	defer phpInfoMu.Unlock()
+
+	if time.Since(lastPHPInfoTime) < time.Hour && cachedPHPInfo != nil {
+		return cachedPHPInfo, phpInfoErr
+	}
+
 	version, err := getPHPVersion(cfg.Binary)
 	if err != nil {
-		return nil, err
-	}
-	ext, err := getPHPExtensions(cfg.Binary)
-	if err != nil {
+		phpInfoErr = err
 		return nil, err
 	}
 
-	info := &Info{
+	ext, err := getPHPExtensions(cfg.Binary)
+	if err != nil {
+		phpInfoErr = err
+		return nil, err
+	}
+
+	cachedPHPInfo = &Info{
 		Version:    version,
 		Extensions: ext,
 	}
+	lastPHPInfoTime = time.Now()
+	phpInfoErr = nil
 
-	return info, nil
+	return cachedPHPInfo, nil
 }
 
 func getPHPVersion(bin string) (string, error) {

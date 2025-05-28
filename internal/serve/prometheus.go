@@ -30,9 +30,7 @@ type PrometheusCollector struct {
 	slowRequestsDesc        *prometheus.Desc
 	processesCpuDesc        *prometheus.Desc
 	processesMemoryDesc     *prometheus.Desc
-	processesMemoryRssDesc  *prometheus.Desc
 	memoryPeakDesc          *prometheus.Desc
-	processCurrentRssDesc   *prometheus.Desc
 
 	// Opcache metrics
 	opcacheEnabledDesc         *prometheus.Desc
@@ -100,9 +98,7 @@ func NewPrometheusCollector(cfg *config.Config) *PrometheusCollector {
 		slowRequestsDesc:        prometheus.NewDesc("phpfpm_slow_requests", "The number of requests that exceeded request_slowlog_timeout.", labels, nil),
 		processesCpuDesc:        prometheus.NewDesc("phpfpm_processes_cpu_avg", "Average CPU usage across all processes in the pool.", labels, nil),
 		processesMemoryDesc:     prometheus.NewDesc("phpfpm_processes_memory_avg", "Average memory usage across all processes in the pool.", labels, nil),
-		processesMemoryRssDesc:  prometheus.NewDesc("phpfpm_processes_memory_rss_avg", "Average resident set size (RSS) across all processes in the pool.", labels, nil),
 		memoryPeakDesc:          prometheus.NewDesc("phpfpm_memory_peak", "Peak memory usage of the pool.", labels, nil),
-		processCurrentRssDesc:   prometheus.NewDesc("phpfpm_process_current_rss", "Resident set size (RSS) of the current process.", []string{"pool", "socket", "pid"}, nil),
 
 		// Opcache metrics
 		opcacheEnabledDesc:         prometheus.NewDesc("phpfpm_opcache_enabled", "Whether opcache is enabled.", labels, nil),
@@ -157,9 +153,7 @@ func (pc *PrometheusCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- pc.slowRequestsDesc
 	ch <- pc.processesCpuDesc
 	ch <- pc.processesMemoryDesc
-	ch <- pc.processesMemoryRssDesc
 	ch <- pc.memoryPeakDesc
-	ch <- pc.processCurrentRssDesc
 
 	// Opcache metrics
 	ch <- pc.opcacheEnabledDesc
@@ -350,9 +344,6 @@ func (pc *PrometheusCollector) Collect(ch chan<- prometheus.Metric) {
 			if pool.ProcessesMemory != nil {
 				ch <- prometheus.MustNewConstMetric(pc.processesMemoryDesc, prometheus.GaugeValue, *pool.ProcessesMemory, poolName, socket)
 			}
-			if pool.ProcessesMemoryRss != nil {
-				ch <- prometheus.MustNewConstMetric(pc.processesMemoryRssDesc, prometheus.GaugeValue, *pool.ProcessesMemoryRss, poolName, socket)
-			}
 
 			// --- Per-process metrics ---
 			for _, proc := range pool.Processes {
@@ -382,9 +373,6 @@ func (pc *PrometheusCollector) Collect(ch chan<- prometheus.Metric) {
 				ch <- prometheus.MustNewConstMetric(
 					prometheus.NewDesc("phpfpm_process_last_request_cpu", "The %cpu the last request consumed.", []string{"pool", "socket", "pid"}, nil),
 					prometheus.GaugeValue, proc.LastRequestCPU, labels...)
-
-				// New: current RSS per process
-				ch <- prometheus.MustNewConstMetric(pc.processCurrentRssDesc, prometheus.GaugeValue, float64(proc.CurrentRSS), poolName, socket, strconv.Itoa(proc.PID))
 			}
 
 			// Opcache metrics
@@ -452,14 +440,16 @@ func boolToFloat(b bool) float64 {
 }
 
 func StartPrometheusServer(cfg *config.Config) {
+	mux := http.NewServeMux()
+
 	registry := prometheus.NewRegistry()
 	collector := NewPrometheusCollector(cfg)
 	registry.MustRegister(collector)
 
-	http.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
+	mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
 
-	if cfg.Monitor.EnableJson == true {
-		http.HandleFunc("/json", func(w http.ResponseWriter, r *http.Request) {
+	if cfg.Monitor.EnableJson {
+		mux.HandleFunc("/json", func(w http.ResponseWriter, r *http.Request) {
 			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 			defer cancel()
 
@@ -470,15 +460,17 @@ func StartPrometheusServer(cfg *config.Config) {
 			}
 
 			w.Header().Set("Content-Type", "application/json")
-			if err := json.NewEncoder(w).Encode(m); err != nil {
-				http.Error(w, "failed to encode metrics: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
+			_ = json.NewEncoder(w).Encode(m)
 		})
 	}
 
+	server := &http.Server{
+		Addr:    cfg.Monitor.ListenAddr,
+		Handler: mux,
+	}
+
 	log.Printf("Prometheus metrics server listening on %s", cfg.Monitor.ListenAddr)
-	if err := http.ListenAndServe(cfg.Monitor.ListenAddr, nil); err != nil {
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Failed to start Prometheus server: %v", err)
 	}
 }
