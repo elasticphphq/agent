@@ -1,15 +1,10 @@
 package phpfpm
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"github.com/elasticphphq/agent/internal/logging"
 	"log"
-	"os"
-	"os/exec"
-	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
@@ -55,7 +50,6 @@ type Pool struct {
 	Processes           []PoolProcess     `json:"processes"`
 	ProcessesCpu        *float64          `json:"processes_cpu"`
 	ProcessesMemory     *float64          `json:"processes_memory"`
-	ProcessesMemoryRss  *float64          `json:"processes_memory_rss"`
 	Config              map[string]string `json:"config,omitempty"`
 	OpcacheStatus       OpcacheStatus     `json:"opcache_status,omitempty"`
 	PhpInfo             Info              `json:"php_info,omitempty"`
@@ -132,62 +126,35 @@ func GetMetrics(ctx context.Context, cfg *config.Config) (map[string]*Result, er
 		}
 
 		// CPU/mem parsing
-		var totalCPU, totalMem, totalMemRss float64
+		var totalCPU, totalMem float64
 		var count int
-		for i, proc := range pool.Processes {
+		for _, proc := range pool.Processes {
 			if !strings.HasPrefix(proc.RequestURI, poolCfg.StatusPath) &&
 				!strings.HasPrefix(proc.RequestURI, "/opcache-status-") {
 
-				if runtime.GOOS == "darwin" {
-					cmd := exec.Command("ps", "-o", "rss=,vsz=", "-p", fmt.Sprint(proc.PID))
-					out, err := cmd.Output()
-					if err == nil {
-						fields := strings.Fields(string(out))
-						if len(fields) >= 2 {
-							rss, _ := strconv.ParseInt(fields[0], 10, 64)
-							pool.Processes[i].CurrentRSS = rss * 1024
-						}
-					}
-				} else if runtime.GOOS == "linux" {
-					if data, err := os.ReadFile(fmt.Sprintf("/proc/%d/status", proc.PID)); err == nil {
-						scanner := bufio.NewScanner(strings.NewReader(string(data)))
-						for scanner.Scan() {
-							line := scanner.Text()
-							if strings.HasPrefix(line, "VmRSS:") {
-								fields := strings.Fields(line)
-								if len(fields) >= 2 {
-									val, _ := strconv.ParseInt(fields[1], 10, 64)
-									pool.Processes[i].CurrentRSS = val * 1024
-								}
-							}
-						}
-					}
-				}
-
 				totalCPU += float64(proc.LastRequestCPU)
 				totalMem += float64(proc.LastRequestMemory)
-				totalMemRss += float64(proc.CurrentRSS)
 				count++
 			}
 		}
+
 		if count > 0 {
 			pool.ProcessesCpu = ptr(totalCPU / float64(count))
 			pool.ProcessesMemory = ptr(totalMem / float64(count))
-			pool.ProcessesMemoryRss = ptr(totalMemRss / float64(count))
 		}
 
 		phpStatus, err := GetPHPStats(ctx, poolCfg)
 		if err == nil && phpStatus != nil {
 			pool.PhpInfo = *phpStatus
 		} else {
-			logging.L().Info("failed to get PHP info", "error", err)
+			logging.L().Debug("failed to get PHP info", "error", err)
 		}
 
 		opcacheStatus, err := GetOpcacheStatus(ctx, poolCfg)
 		if err == nil && opcacheStatus != nil {
 			pool.OpcacheStatus = *opcacheStatus
 		} else {
-			logging.L().Info("failed to get PHP info", "error", err)
+			logging.L().Debug("failed to get Opcache info", "error", err)
 		}
 
 		result.Pools[pool.Name] = pool
