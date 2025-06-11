@@ -1,0 +1,78 @@
+{
+  "id": null,
+  "title": "ElasticPHP Agent",
+  "tags": ["php-fpm", "laravel", "elasticphp"],
+  "timezone": "browser",
+  "schemaVersion": 36,
+  "version": 2,
+  "refresh": "5s",
+  "panels": [
+    {
+      "type": "graph",
+      "title": "FPM Accepted Connections",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "phpfpm_accepted_connections",
+          "legendFormat": "{{pool}} ({{socket}})",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 }
+    },
+    {
+      "type": "graph",
+      "title": "FPM Max Children Reached",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "phpfpm_max_children_reached",
+          "legendFormat": "{{pool}} ({{socket}})",
+          "refId": "B"
+        }
+      ],
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 }
+    },
+    {
+      "type": "graph",
+      "title": "FPM Active vs Max Children",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "phpfpm_active_processes",
+          "legendFormat": "active {{pool}} ({{socket}})",
+          "refId": "C"
+        },
+        {
+          "expr": "phpfpm_config_max_children",
+          "legendFormat": "max {{pool}} ({{socket}})",
+          "refId": "D"
+        }
+      ],
+      "gridPos": { "x": 0, "y": 8, "w": 24, "h": 8 }
+    },
+    {
+      "type": "graph",
+      "title": "Laravel Cache Status",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "laravel_cache_config",
+          "legendFormat": "{{site}} config",
+          "refId": "E"
+        },
+        {
+          "expr": "laravel_cache_routes",
+          "legendFormat": "{{site}} routes",
+          "refId": "F"
+        },
+        {
+          "expr": "laravel_cache_views",
+          "legendFormat": "{{site}} views",
+          "refId": "G"
+        }
+      ],
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 8 }
+    }
+  ]
+}
