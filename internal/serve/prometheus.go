@@ -379,14 +379,14 @@ func (pc *PrometheusCollector) Collect(ch chan<- prometheus.Metric) {
 		}
 	}
 
-	//if m.Fpm == nil {
-	//	ch <- prometheus.MustNewConstMetric(pc.upDesc, prometheus.GaugeValue, 0, "unknown", "unknown")
-	//	return
-	//}
-	//if len(m.Fpm) == 0 {
-	//	ch <- prometheus.MustNewConstMetric(pc.upDesc, prometheus.GaugeValue, 0, "none", "none")
-	//	return
-	//}
+	if m.Fpm == nil {
+		ch <- prometheus.MustNewConstMetric(pc.upDesc, prometheus.GaugeValue, 0, "unknown", "unknown")
+		return
+	}
+	if len(m.Fpm) == 0 {
+		ch <- prometheus.MustNewConstMetric(pc.upDesc, prometheus.GaugeValue, 0, "none", "none")
+		return
+	}
 	for socket, pools := range m.Fpm {
 		if socket == "" {
 			socket = "unknown"
