@@ -52,16 +52,16 @@ func (s *StringOrSlice) UnmarshalJSON(data []byte) error {
 
 type AppInfo struct {
 	Environment struct {
-		ApplicationName string     `json:"application_name"`
-		LaravelVersion  string     `json:"laravel_version"`
-		PHPVersion      string     `json:"php_version"`
-		ComposerVersion string     `json:"composer_version"`
-		Environment     string     `json:"environment"`
-		DebugMode       BoolString `json:"debug_mode"`
-		URL             string     `json:"url"`
-		MaintenanceMode BoolString `json:"maintenance_mode"`
-		Timezone        string     `json:"timezone"`
-		Locale          string     `json:"locale"`
+		ApplicationName *string     `json:"application_name"`
+		LaravelVersion  *string     `json:"laravel_version"`
+		PHPVersion      *string     `json:"php_version"`
+		ComposerVersion *string     `json:"composer_version"`
+		Environment     *string     `json:"environment"`
+		DebugMode       *BoolString `json:"debug_mode"`
+		URL             *string     `json:"url"`
+		MaintenanceMode *BoolString `json:"maintenance_mode"`
+		Timezone        *string     `json:"timezone"`
+		Locale          *string     `json:"locale"`
 	} `json:"environment"`
 
 	Cache struct {
@@ -72,16 +72,16 @@ type AppInfo struct {
 	} `json:"cache"`
 
 	Drivers struct {
-		Broadcasting string        `json:"broadcasting"`
-		Cache        string        `json:"cache"`
-		Database     string        `json:"database"`
-		Logs         StringOrSlice `json:"logs"`
-		Mail         string        `json:"mail"`
-		Queue        string        `json:"queue"`
-		Session      string        `json:"session"`
+		Broadcasting *string        `json:"broadcasting"`
+		Cache        *string        `json:"cache"`
+		Database     *string        `json:"database"`
+		Logs         *StringOrSlice `json:"logs"`
+		Mail         *string        `json:"mail"`
+		Queue        *string        `json:"queue"`
+		Session      *string        `json:"session"`
 	} `json:"drivers"`
 
-	Livewire map[string]string `json:"livewire,omitempty"`
+	Livewire *map[string]string `json:"livewire,omitempty"`
 }
 
 var (
