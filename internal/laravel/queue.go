@@ -66,8 +66,8 @@ foreach (%[2]s as $q) {
 				$table = $property->getValue($connection);
 				$oldestPending = $db->table($table)->where("queue", $q)->whereNull("reserved_at")->orderBy("created_at")->value("created_at");
 
-				$sizes["%[1]s"][$q]['pending'] = $db->table($table)->where("queue", $q)->whereNull("reserved_at")->where("available_at", "<=", $now)->count();
-				$sizes["%[1]s"][$q]['scheduled'] = $db->table($table)->where("queue", $q)->where("available_at", ">", $now)->count();
+				$sizes["%[1]s"][$q]['pending'] = $db->table($table)->where("queue", $q)->whereNull("reserved_at")->where("available_at", "<=", $now->timestamp)->count();
+				$sizes["%[1]s"][$q]['scheduled'] = $db->table($table)->where("queue", $q)->where("available_at", ">", $now->timestamp)->count();
 				$sizes["%[1]s"][$q]['reserved'] = $db->table($table)->where("queue", $q)->whereNotNull("reserved_at")->count();
 				$sizes["%[1]s"][$q]['oldest_pending'] = $oldestPending ? (int) now()->diffInSeconds(Carbon::createFromTimestamp($oldestPending), true) : null;
 			} catch (\Throwable $e) {
