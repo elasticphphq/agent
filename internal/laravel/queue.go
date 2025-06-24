@@ -164,6 +164,7 @@ echo json_encode($sizes);`
 
 	cmd := exec.Command(phpBinary, "-d", "error_reporting=E_ALL & ~E_DEPRECATED", "artisan", "tinker", "--execute", script)
 	cmd.Dir = filepath.Clean(appPath)
+	cmd.Env = append(cmd.Env, "NIGHTWATCH_ENABLED=false")
 
 	var out bytes.Buffer
 	cmd.Stdout = &out

@@ -17,6 +17,18 @@ build:
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBUILD) -o $(BUILD_DIR)/$(BINARY_NAME) -v .
 	CGO_ENABLED=0 $(GOBUILD) -o $(BUILD_DIR)/arm64-$(BINARY_NAME) -v .
 
+test:
+	$(GOTEST) -v -cover ./...
+
+test-coverage:
+	$(GOTEST) -v -coverprofile=coverage.out ./...
+	$(GOCMD) tool cover -func=coverage.out
+	$(GOCMD) tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report saved to coverage.html"
+
+test-coverage-clean:
+	rm -f coverage.out coverage.html
+
 build-docker:
 	docker build -t $(IMAGE_NAME) .
 
