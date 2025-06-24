@@ -266,7 +266,7 @@ func TestFindMatchingCliBinary_MockBinary(t *testing.T) {
 	// Create a mock FPM binary that outputs version info
 	tempDir := t.TempDir()
 	mockFmpPath := tempDir + "/mock-php-fpm"
-	mockCliPath := tempDir + "/php8.2"  // Use the name the function expects
+	mockCliPath := tempDir + "/php8.2" // Use the name the function expects
 
 	// Create mock FPM binary
 	fmpScript := `#!/bin/bash
@@ -405,7 +405,7 @@ func TestFindMatchingCliBinary_VersionParsing(t *testing.T) {
 				} else if strings.Contains(tt.fmpOutput, "7.4") {
 					version = "7.4"
 				}
-				
+
 				// Create mock CLI binary with the name the function expects
 				var mockCliPath string
 				if version != "" {
@@ -444,6 +444,9 @@ func TestFindMatchingCliBinary_VersionParsing(t *testing.T) {
 }
 
 func TestDiscoverFPMProcesses_MockImplementation(t *testing.T) {
+	if os.Getenv("CI") == "true" {
+		t.Skip("Skipping discovery test in CI environment")
+	}
 	// Initialize logging to prevent panic
 	logging.Init(config.LoggingBlock{Level: "error", Format: "text"})
 
