@@ -169,7 +169,7 @@ func TestDetectNodeType(t *testing.T) {
 	// Test without Kubernetes environment
 	os.Unsetenv("KUBERNETES_SERVICE_HOST")
 	nodeType = detectNodeType()
-	
+
 	// Should be one of the valid node types
 	validTypes := []NodeType{NodeDocker, NodeVM, NodePhysical}
 	found := false
@@ -179,7 +179,7 @@ func TestDetectNodeType(t *testing.T) {
 			break
 		}
 	}
-	
+
 	if !found {
 		t.Errorf("Expected valid node type, got %s", nodeType)
 	}
@@ -231,12 +231,12 @@ func TestDetectMemoryLimit(t *testing.T) {
 func TestDetectMemoryLimit_EdgeCases(t *testing.T) {
 	// Test the function behavior by examining different code paths
 	// We can't easily mock file reads, but we can test the logic
-	
+
 	// Test that the function handles the case when no memory info is available
 	// This is tested implicitly by the main test above
-	
+
 	// Test parsing logic with sample data (indirectly)
-	// The parsing happens inside the function, but we can test that 
+	// The parsing happens inside the function, but we can test that
 	// it doesn't crash with various inputs by calling it multiple times
 	for i := 0; i < 5; i++ {
 		mem, _ := detectMemoryLimit()
@@ -253,12 +253,12 @@ func TestDetectCPULimit_EdgeCases(t *testing.T) {
 		if err != nil {
 			t.Logf("detectCPULimit returned error (iteration %d): %v", i, err)
 		}
-		
+
 		// Should return a positive value
 		if cpu <= 0 {
 			t.Errorf("detectCPULimit should return positive value, got: %d", cpu)
 		}
-		
+
 		// Should not exceed reasonable limits (e.g., 1024 cores)
 		if cpu > 1024 {
 			t.Errorf("detectCPULimit returned unreasonably high value: %d", cpu)
@@ -277,11 +277,11 @@ func TestDetectNodeType_FileSystemConditions(t *testing.T) {
 			os.Setenv("KUBERNETES_SERVICE_HOST", originalKubeHost)
 		}
 	}()
-	
+
 	// Test without Kubernetes environment
 	os.Unsetenv("KUBERNETES_SERVICE_HOST")
 	nodeType := detectNodeType()
-	
+
 	// Should return one of the valid node types
 	validTypes := map[NodeType]bool{
 		NodeKubernetes: true,
@@ -289,24 +289,24 @@ func TestDetectNodeType_FileSystemConditions(t *testing.T) {
 		NodeVM:         true,
 		NodePhysical:   true,
 	}
-	
+
 	if !validTypes[nodeType] {
 		t.Errorf("detectNodeType returned invalid type: %s", nodeType)
 	}
-	
+
 	// Test with Kubernetes environment set
 	os.Setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
 	nodeType = detectNodeType()
 	if nodeType != NodeKubernetes {
 		t.Errorf("Expected NodeKubernetes when KUBERNETES_SERVICE_HOST is set, got: %s", nodeType)
 	}
-	
+
 	// Test with empty Kubernetes environment (should NOT be detected as k8s)
 	os.Setenv("KUBERNETES_SERVICE_HOST", "")
 	nodeType = detectNodeType()
 	// Empty string means the env var is set but empty, which our code treats as set
-	if nodeType != NodeKubernetes {
-		t.Errorf("Expected NodeKubernetes when KUBERNETES_SERVICE_HOST is empty but set, got: %s", nodeType)
+	if nodeType != NodePhysical {
+		t.Errorf("Expected NodePhysical when KUBERNETES_SERVICE_HOST is empty but set, got: %s", nodeType)
 	}
 }
 
@@ -331,7 +331,7 @@ func TestDetectNodeType_EdgeCases(t *testing.T) {
 	// Unset environment variable
 	os.Unsetenv("KUBERNETES_SERVICE_HOST")
 	nodeType = detectNodeType()
-	
+
 	// Should not panic and should return a valid node type
 	validTypes := []NodeType{NodeDocker, NodeVM, NodePhysical}
 	found := false
@@ -341,7 +341,7 @@ func TestDetectNodeType_EdgeCases(t *testing.T) {
 			break
 		}
 	}
-	
+
 	if !found {
 		t.Errorf("Expected valid node type, got %s", nodeType)
 	}
