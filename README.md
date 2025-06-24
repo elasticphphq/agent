@@ -8,7 +8,7 @@ It is designed to run locally, in Docker/Kubernetes or in VMs or shared hosting 
 - 📊 Exposes PHP-FPM metrics via FastCGI (using [fcgx](https://github.com/elasticphphq/fcgx))
 - ⚙️ Automatically discovers PHP-FPM pools and extracts config using `php-fpm -tt`
 - 🧠 Collects and exposes detailed Opcache statistics per FPM pool
-- 🚦 Tracks Laravel queue sizes via `php artisan tinker --execute and Queue::size()`
+- 🚦 Tracks Laravel queue sizes via `php artisan tinker --execute`
 - 🧠 Provides Laravel application info (`php artisan about --json`)
 - 🔌 Prometheus metrics endpoint at `/metrics`, and full JSON snapshot available at `/json`
 - ⚙️ Structured configuration via CLI flags, environment variables, or config files (YAML)

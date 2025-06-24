@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/elasticphphq/agent/internal/logging"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -73,7 +73,7 @@ func GetMetrics(ctx context.Context, cfg *config.Config) (map[string]*Result, er
 
 		scheme, address, path, err := ParseAddress(poolCfg.StatusSocket, poolCfg.StatusPath)
 		if err != nil {
-			log.Printf("invalid FPM socket address: %v", err)
+			logging.L().Error("invalid FPM socket address: %v", slog.Any("err", err))
 			continue
 		}
 
@@ -107,7 +107,7 @@ func GetMetrics(ctx context.Context, cfg *config.Config) (map[string]*Result, er
 		err = fcgx.ReadJSON(resp, &pool)
 
 		if err != nil {
-			log.Printf("failed to parse FPM JSON: %v", err)
+			logging.L().Error("failed to parse FPM JSON: %v", slog.Any("err", err))
 			continue
 		}
 
