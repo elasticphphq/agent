@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -164,7 +165,15 @@ echo json_encode($sizes);`
 
 	cmd := exec.Command(phpBinary, "-d", "error_reporting=E_ALL & ~E_DEPRECATED", "artisan", "tinker", "--execute", script)
 	cmd.Dir = filepath.Clean(appPath)
+
+	// disable monitoring on scraping to prevent exhausting monitoring tools
+	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "NIGHTWATCH_ENABLED=false")
+	cmd.Env = append(cmd.Env, "TELESCOPE_ENABLED=false")
+	cmd.Env = append(cmd.Env, "NEW_RELIC_ENABLED=false")
+	cmd.Env = append(cmd.Env, "BUGSNAG_API_KEY=null")
+	cmd.Env = append(cmd.Env, "SENTRY_LARAVEL_DSN=null")
+	cmd.Env = append(cmd.Env, "ROLLBAR_TOKEN=null")
 
 	var out bytes.Buffer
 	cmd.Stdout = &out
