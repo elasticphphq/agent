@@ -3,11 +3,13 @@ package serve
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/elasticphphq/agent/internal/config"
+	"github.com/elasticphphq/agent/internal/logging"
 	"github.com/elasticphphq/agent/internal/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -541,8 +543,8 @@ func StartPrometheusServer(cfg *config.Config) {
 		Handler: mux,
 	}
 
-	log.Printf("Prometheus metrics server listening on %s", cfg.Monitor.ListenAddr)
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("Failed to start Prometheus server: %v", err)
+	logging.L().Debug("Prometheus metrics server listening on %s", slog.Any("addr", cfg.Monitor.ListenAddr))
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		logging.L().Error("Failed to start Prometheus server: %v", slog.Any("err", err))
 	}
 }
