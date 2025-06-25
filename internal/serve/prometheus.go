@@ -543,8 +543,8 @@ func StartPrometheusServer(cfg *config.Config) {
 		Handler: mux,
 	}
 
-	logging.L().Debug("Prometheus metrics server listening", slog.Any("addr", cfg.Monitor.ListenAddr))
+	logging.L().Debug("ElasticPHP-agent Prometheus metrics server listening", slog.Any("addr", cfg.Monitor.ListenAddr))
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		logging.L().Error("Failed to start Prometheus server", slog.Any("err", err))
+		logging.L().Error("ElasticPHP-agent Failed to start Prometheus server", slog.Any("err", err))
 	}
 }
