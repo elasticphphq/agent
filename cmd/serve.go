@@ -11,7 +11,7 @@ var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start agent HTTP server with metrics and control endpoints",
 	Run: func(cmd *cobra.Command, args []string) {
-		logging.L().Info("Starting elasticphp-agent")
+		logging.L().Info("ElasticPHP-agent Starting")
 		serve.StartPrometheusServer(Config)
 	},
 }

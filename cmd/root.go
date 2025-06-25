@@ -101,8 +101,8 @@ var rootCmd = &cobra.Command{
 		Config = loaded
 
 		logging.Init(Config.Logging)
-		logging.L().Debug("Logging initialized", "level", Config.Logging.Level)
-		logging.L().Debug("Loaded config", "config", Config)
+		logging.L().Debug("ElasticPHP-agent Logging initialized", "level", Config.Logging.Level)
+		logging.L().Debug("ElasticPHP-agent Loaded config", "config", Config)
 
 		// phpfpm autodiscover
 		if Config.PHPFpm.Enabled && Config.PHPFpm.Autodiscover {
@@ -115,16 +115,16 @@ var rootCmd = &cobra.Command{
 					break
 				}
 
-				logging.L().Warn("Autodiscover attempt failed", "attempt", i+1, "error", err)
+				logging.L().Debug("ElasticPHP-agent PHP-FPM autodiscover attempt failed", "attempt", i+1, "error", err)
 				time.Sleep(time.Duration(Config.PHPFpm.RetryDelay) * time.Second)
 			}
 
 			if err != nil {
-				logging.L().Error("Autodiscover failed after retries", "error", err)
+				logging.L().Error("ElasticPHP-agent PHP-FPM Autodiscover failed after retries", "error", err)
 			} else if len(discovered) == 0 {
-				logging.L().Error("Autodiscover succeeded but no FPM pools found")
+				logging.L().Error("ElasticPHP-agent PHP-FPM Autodiscover succeeded but no FPM pools found")
 			} else {
-				logging.L().Debug("Discovered FPM Processes", "pools", discovered)
+				logging.L().Debug("ElasticPHP-agent Discovered PHP-FPM Processes", "pools", discovered)
 				for _, d := range discovered {
 					Config.PHPFpm.Pools = append(Config.PHPFpm.Pools, config.FPMPoolConfig{
 						Socket:       d.Socket,
