@@ -71,7 +71,7 @@ func GetMetrics(ctx context.Context, cfg *config.Config) (map[string]*Result, er
 			Global:    make(map[string]string),
 		}
 
-		scheme, address, path, err := ParseAddress(poolCfg.StatusSocket, poolCfg.StatusPath)
+		scheme, address, path, err := ParseAddress(poolCfg.Socket, poolCfg.StatusPath)
 		if err != nil {
 			logging.L().Error("ElasticPHP-agent Invalid FPM socket address: %v", slog.Any("err", err))
 			continue
@@ -165,7 +165,7 @@ func GetMetrics(ctx context.Context, cfg *config.Config) (map[string]*Result, er
 }
 
 func GetMetricsForPool(ctx context.Context, pool config.FPMPoolConfig) (*Result, error) {
-	scheme, address, path, err := ParseAddress(pool.StatusSocket, pool.StatusPath)
+	scheme, address, path, err := ParseAddress(pool.Socket, pool.StatusPath)
 	if err != nil {
 		return nil, fmt.Errorf("invalid FPM socket address: %w", err)
 	}
