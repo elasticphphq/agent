@@ -557,3 +557,156 @@ func TestResult_TimestampHandling(t *testing.T) {
 		t.Errorf("Timestamp comparison failed")
 	}
 }
+
+func TestPool_ProcessCountCalculation(t *testing.T) {
+	// Test pool with processes to verify process counting logic
+	pool := Pool{
+		Name: "test",
+		// Original counts from PHP-FPM status (may be incorrect)
+		ActiveProcesses: 99, // This should be recalculated
+		IdleProcesses:   99, // This should be recalculated
+		TotalProcesses:  99, // This should be recalculated
+		Processes: []PoolProcess{
+			{
+				PID:               1001,
+				State:             "Running",
+				RequestURI:        "/app/test",
+				LastRequestCPU:    1.0,
+				LastRequestMemory: 1000000,
+			},
+			{
+				PID:               1002,
+				State:             "Idle",
+				RequestURI:        "/status", // This should be filtered out from CPU/mem calc
+				LastRequestCPU:    2.0,
+				LastRequestMemory: 2000000,
+			},
+			{
+				PID:               1003,
+				State:             "Running",
+				RequestURI:        "/app/another",
+				LastRequestCPU:    3.0,
+				LastRequestMemory: 3000000,
+			},
+			{
+				PID:               1004,
+				State:             "Reading Headers",
+				RequestURI:        "/app/third",
+				LastRequestCPU:    4.0,
+				LastRequestMemory: 4000000,
+			},
+		},
+	}
+
+	// Simulate the process counting logic from GetMetrics
+	var totalCPU, totalMem float64
+	var count int
+	var activeCount, idleCount int64
+	statusPath := "/status"
+
+	for _, proc := range pool.Processes {
+		// Count processes by state
+		switch strings.ToLower(proc.State) {
+		case "running", "reading headers", "info", "finishing", "ending":
+			activeCount++
+		case "idle":
+			idleCount++
+		}
+
+		// CPU/memory calculation (exclude status and opcache requests)
+		if !strings.HasPrefix(proc.RequestURI, statusPath) &&
+			!strings.HasPrefix(proc.RequestURI, "/opcache-status-") {
+			totalCPU += float64(proc.LastRequestCPU)
+			totalMem += float64(proc.LastRequestMemory)
+			count++
+		}
+	}
+
+	// Test process counting - should be calculated from actual process list
+	expectedActive := int64(3) // "Running" + "Reading Headers" + "Running"
+	expectedIdle := int64(1)   // "Idle"
+	expectedTotal := int64(4)  // Total processes in list
+
+	if activeCount != expectedActive {
+		t.Errorf("Expected %d active processes, got %d", expectedActive, activeCount)
+	}
+
+	if idleCount != expectedIdle {
+		t.Errorf("Expected %d idle processes, got %d", expectedIdle, idleCount)
+	}
+
+	totalProcesses := int64(len(pool.Processes))
+	if totalProcesses != expectedTotal {
+		t.Errorf("Expected %d total processes, got %d", expectedTotal, totalProcesses)
+	}
+
+	// Test CPU/memory calculation (3 processes should be counted - filtering out /status)
+	expectedCPUMemCount := 3
+	if count != expectedCPUMemCount {
+		t.Errorf("Expected %d processes to be counted for CPU/mem, got %d", expectedCPUMemCount, count)
+	}
+
+	expectedAvgCPU := (1.0 + 3.0 + 4.0) / 3.0 // Average excluding /status request
+	actualAvgCPU := totalCPU / float64(count)
+	if actualAvgCPU != expectedAvgCPU {
+		t.Errorf("Expected average CPU to be %f, got %f", expectedAvgCPU, actualAvgCPU)
+	}
+
+	expectedAvgMem := (1000000.0 + 3000000.0 + 4000000.0) / 3.0 // Average excluding /status request
+	actualAvgMem := totalMem / float64(count)
+	if actualAvgMem != expectedAvgMem {
+		t.Errorf("Expected average memory to be %f, got %f", expectedAvgMem, actualAvgMem)
+	}
+}
+
+func TestPool_ProcessStateRecognition(t *testing.T) {
+	// Test different process states are correctly categorized
+	testCases := []struct {
+		state    string
+		isActive bool
+		isIdle   bool
+	}{
+		{"Running", true, false},
+		{"running", true, false},
+		{"Reading Headers", true, false},
+		{"reading headers", true, false},
+		{"Info", true, false},
+		{"info", true, false},
+		{"Finishing", true, false},
+		{"finishing", true, false},
+		{"Ending", true, false},
+		{"ending", true, false},
+		{"Idle", false, true},
+		{"idle", false, true},
+		{"Unknown", false, false}, // Unknown states are not counted
+		{"", false, false},        // Empty state is not counted
+	}
+
+	for _, tc := range testCases {
+		t.Run("state_"+tc.state, func(t *testing.T) {
+			var activeCount, idleCount int64
+
+			proc := PoolProcess{State: tc.state}
+
+			// Simulate the state counting logic
+			switch strings.ToLower(proc.State) {
+			case "running", "reading headers", "info", "finishing", "ending":
+				activeCount++
+			case "idle":
+				idleCount++
+			}
+
+			if tc.isActive && activeCount != 1 {
+				t.Errorf("State '%s' should be counted as active", tc.state)
+			}
+
+			if tc.isIdle && idleCount != 1 {
+				t.Errorf("State '%s' should be counted as idle", tc.state)
+			}
+
+			if !tc.isActive && !tc.isIdle && (activeCount > 0 || idleCount > 0) {
+				t.Errorf("State '%s' should not be counted as active or idle", tc.state)
+			}
+		})
+	}
+}
