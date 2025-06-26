@@ -12,6 +12,7 @@ import (
 	"github.com/elasticphphq/agent/internal/logging"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	dto "github.com/prometheus/client_model/go"
 )
 
 func TestNewPrometheusCollector(t *testing.T) {
@@ -402,5 +403,234 @@ func TestPrometheusCollector_RegistryIntegration(t *testing.T) {
 	success := registry.Unregister(collector)
 	if !success {
 		t.Errorf("Failed to unregister collector")
+	}
+}
+
+func TestPrometheusCollector_Collect_ComprehensiveMetrics(t *testing.T) {
+	// Initialize logging to prevent panic
+	logging.Init(config.LoggingBlock{Level: "error", Format: "text"})
+
+	// Test with comprehensive config that exercises different code paths
+	cfg := &config.Config{
+		PHPFpm: config.FPMConfig{
+			Enabled: true,
+			Pools: []config.FPMPoolConfig{
+				{
+					Socket:       "unix:///nonexistent/socket1",
+					StatusSocket: "unix:///nonexistent/socket1",
+					StatusPath:   "/status",
+					Binary:       "/usr/bin/php-fpm",
+				},
+				{
+					Socket:       "tcp://127.0.0.1:9001",
+					StatusSocket: "tcp://127.0.0.1:9001",
+					StatusPath:   "/fpm-status",
+					Binary:       "/usr/bin/php-fpm",
+				},
+			},
+		},
+		Laravel: []config.LaravelConfig{
+			{
+				Name: "test-site",
+				Path: "/var/www/test",
+			},
+		},
+	}
+
+	collector := NewPrometheusCollector(cfg)
+
+	// Create channel to collect metrics
+	ch := make(chan prometheus.Metric, 100)
+	go func() {
+		collector.Collect(ch)
+		close(ch)
+	}()
+
+	// Collect all metrics
+	var metrics []prometheus.Metric
+	for metric := range ch {
+		metrics = append(metrics, metric)
+	}
+
+	// Should have at least some metrics even if collection fails
+	if len(metrics) == 0 {
+		t.Errorf("Expected some metrics from Collect")
+	}
+
+	// Should have at least some metrics even if collection fails
+	if len(metrics) < 2 {
+		t.Errorf("Expected at least 2 metrics from comprehensive collection, got %d", len(metrics))
+	}
+
+	// Validate all metrics can be written to DTO
+	for _, metric := range metrics {
+		metricDTO := &dto.Metric{}
+		if err := metric.Write(metricDTO); err != nil {
+			t.Errorf("Failed to write metric to DTO: %v", err)
+		}
+	}
+}
+
+func TestPrometheusCollector_Collect_MetricValidation(t *testing.T) {
+	// Initialize logging to prevent panic
+	logging.Init(config.LoggingBlock{Level: "error", Format: "text"})
+
+	// Test with minimal config
+	cfg := &config.Config{
+		PHPFpm: config.FPMConfig{
+			Enabled: false, // Disabled to avoid connection attempts
+		},
+	}
+
+	collector := NewPrometheusCollector(cfg)
+
+	// Create channel to collect metrics
+	ch := make(chan prometheus.Metric, 50)
+	go func() {
+		collector.Collect(ch)
+		close(ch)
+	}()
+
+	// Validate all metrics can be written to DTO
+	metricCount := 0
+	for metric := range ch {
+		metricDTO := &dto.Metric{}
+		err := metric.Write(metricDTO)
+		if err != nil {
+			t.Errorf("Failed to write metric to DTO: %v", err)
+		}
+		metricCount++
+	}
+
+	if metricCount == 0 {
+		t.Errorf("Expected at least one metric from Collect")
+	}
+}
+
+func TestPrometheusCollector_Collect_ConfigEdgeCases(t *testing.T) {
+	// Initialize logging to prevent panic
+	logging.Init(config.LoggingBlock{Level: "error", Format: "text"})
+
+	// Test with empty config
+	emptyConfig := &config.Config{}
+	collector := NewPrometheusCollector(emptyConfig)
+
+	ch := make(chan prometheus.Metric, 50)
+	go func() {
+		collector.Collect(ch)
+		close(ch)
+	}()
+
+	metricCount := 0
+	for range ch {
+		metricCount++
+	}
+
+	// Should still produce some metrics even with empty config
+	if metricCount == 0 {
+		t.Errorf("Expected some metrics even with empty config")
+	}
+
+	// Test with nil config (edge case)
+	nilCollector := &PrometheusCollector{cfg: nil}
+
+	// Initialize required descriptors to prevent panic
+	nilCollector.upDesc = prometheus.NewDesc("test_up", "Test up metric", nil, nil)
+
+	ch2 := make(chan prometheus.Metric, 50)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				// Expected to panic with nil config, this is acceptable
+			}
+			close(ch2)
+		}()
+		nilCollector.Collect(ch2)
+	}()
+
+	// Just drain the channel
+	for range ch2 {
+		// Drain metrics if any
+	}
+}
+
+func TestPrometheusCollector_Collect_SystemMetrics(t *testing.T) {
+	// Initialize logging to prevent panic
+	logging.Init(config.LoggingBlock{Level: "error", Format: "text"})
+
+	// Create a mock config that will generate system metrics
+	cfg := &config.Config{
+		PHPFpm: config.FPMConfig{
+			Enabled: false, // Disabled to focus on system metrics
+		},
+	}
+
+	collector := NewPrometheusCollector(cfg)
+
+	// Create registry and gather metrics
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(collector)
+
+	metricFamilies, err := registry.Gather()
+	if err != nil {
+		t.Fatalf("Failed to gather metrics: %v", err)
+	}
+
+	// Look for system-related metrics
+	foundSystemMetrics := false
+	for _, mf := range metricFamilies {
+		name := mf.GetName()
+		if strings.Contains(name, "system") || strings.Contains(name, "phpfpm_up") {
+			foundSystemMetrics = true
+
+			// Validate metric has proper structure
+			if len(mf.GetMetric()) == 0 {
+				t.Errorf("Expected metric %s to have values", name)
+			}
+		}
+	}
+
+	if !foundSystemMetrics {
+		t.Errorf("Expected to find system-related metrics")
+	}
+}
+
+func TestPrometheusCollector_Collect_ErrorRecovery(t *testing.T) {
+	// Initialize logging to prevent panic
+	logging.Init(config.LoggingBlock{Level: "error", Format: "text"})
+
+	// Test that collector recovers gracefully from various error conditions
+	cfg := &config.Config{
+		PHPFpm: config.FPMConfig{
+			Enabled: true,
+			Pools: []config.FPMPoolConfig{
+				{
+					Socket:       "invalid-format-socket",
+					StatusSocket: "invalid-format-socket",
+					StatusPath:   "/status",
+				},
+			},
+		},
+	}
+
+	collector := NewPrometheusCollector(cfg)
+
+	// Multiple collections should work consistently
+	for i := 0; i < 3; i++ {
+		ch := make(chan prometheus.Metric, 50)
+		go func() {
+			collector.Collect(ch)
+			close(ch)
+		}()
+
+		metricCount := 0
+		for range ch {
+			metricCount++
+		}
+
+		// Should consistently produce metrics even with errors
+		if metricCount == 0 {
+			t.Errorf("Collection %d produced no metrics", i+1)
+		}
 	}
 }

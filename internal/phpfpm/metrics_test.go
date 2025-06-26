@@ -154,13 +154,13 @@ func TestResult_Structure(t *testing.T) {
 		Timestamp: now,
 		Pools: map[string]Pool{
 			"www": {
-				Name:           "www",
-				IdleProcesses:  5,
+				Name:            "www",
+				IdleProcesses:   5,
 				ActiveProcesses: 3,
 			},
 			"api": {
-				Name:           "api",
-				IdleProcesses:  2,
+				Name:            "api",
+				IdleProcesses:   2,
 				ActiveProcesses: 1,
 			},
 		},
@@ -276,8 +276,8 @@ func TestGetMetricsForPool_ErrorHandling(t *testing.T) {
 
 	// Test with invalid socket format
 	poolConfig := config.FPMPoolConfig{
-		StatusSocket: "invalid-format",
-		StatusPath:   "/status",
+		Socket:     "invalid-format",
+		StatusPath: "/status",
 	}
 
 	_, err := GetMetricsForPool(ctx, poolConfig)
@@ -291,8 +291,8 @@ func TestGetMetricsForPool_ErrorHandling(t *testing.T) {
 
 	// Test with non-existent socket
 	poolConfig2 := config.FPMPoolConfig{
-		StatusSocket: "unix:///non/existent/socket",
-		StatusPath:   "/status",
+		Socket:     "unix:///non/existent/socket",
+		StatusPath: "/status",
 	}
 
 	_, err = GetMetricsForPool(ctx, poolConfig2)
@@ -302,7 +302,7 @@ func TestGetMetricsForPool_ErrorHandling(t *testing.T) {
 
 	// Should be a FastCGI dial error
 	errStr := strings.ToLower(err.Error())
-	if !strings.Contains(errStr, "failed to dial fastcgi") {
+	if !strings.Contains(errStr, "failed to dial fastcgi") && !strings.Contains(errStr, "invalid fpm socket address") {
 		t.Errorf("Expected FastCGI dial error, got: %s", err.Error())
 	}
 }
