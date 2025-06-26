@@ -125,10 +125,21 @@ func GetMetrics(ctx context.Context, cfg *config.Config) (map[string]*Result, er
 			}
 		}
 
-		// CPU/mem parsing
+		// Process counting and CPU/mem parsing from actual process list
 		var totalCPU, totalMem float64
 		var count int
+		var activeCount, idleCount int64
+
 		for _, proc := range pool.Processes {
+			// Count processes by state
+			switch strings.ToLower(proc.State) {
+			case "running", "reading headers", "info", "finishing", "ending":
+				activeCount++
+			case "idle":
+				idleCount++
+			}
+
+			// CPU/memory calculation (exclude status and opcache requests)
 			if !strings.HasPrefix(proc.RequestURI, poolCfg.StatusPath) &&
 				!strings.HasPrefix(proc.RequestURI, "/opcache-status-") {
 
@@ -137,6 +148,11 @@ func GetMetrics(ctx context.Context, cfg *config.Config) (map[string]*Result, er
 				count++
 			}
 		}
+
+		// Recalculate process counts from actual process list
+		pool.ActiveProcesses = activeCount
+		pool.IdleProcesses = idleCount
+		pool.TotalProcesses = int64(len(pool.Processes))
 
 		if count > 0 {
 			pool.ProcessesCpu = ptr(totalCPU / float64(count))
@@ -196,6 +212,21 @@ func GetMetricsForPool(ctx context.Context, pool config.FPMPoolConfig) (*Result,
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse FPM JSON: %w", err)
 	}
+
+	// Recalculate process counts from actual process list
+	var activeCount, idleCount int64
+	for _, proc := range poolData.Processes {
+		switch strings.ToLower(proc.State) {
+		case "running", "reading headers", "info", "finishing", "ending":
+			activeCount++
+		case "idle":
+			idleCount++
+		}
+	}
+
+	poolData.ActiveProcesses = activeCount
+	poolData.IdleProcesses = idleCount
+	poolData.TotalProcesses = int64(len(poolData.Processes))
 
 	return &Result{
 		Timestamp: time.Now(),
